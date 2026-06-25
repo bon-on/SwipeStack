@@ -1,0 +1,44 @@
+{
+  "version": "1",
+  "repoName": "SwipeStack",
+  "description": "Spec-driven Flutter timing-stack game repository with harness artifacts for ADR-aware delivery and ad-supported mobile release work.",
+  "policyMode": "warn-block-critical",
+  "stackSummary": "Flutter mobile timing-stack game repository with spec-driven harness artifacts",
+  "sourcePriority": [
+    "feature spec",
+    "related adr",
+    "repo constraints",
+    "golden rules",
+    "general repo context"
+  ],
+  "detectedProfiles": [],
+  "suggestedPacks": [],
+  "approvedPacks": [],
+  "detectedSignals": [
+    "cross-platform-mobile",
+    "flutter-runtime-active",
+    "spec-driven-harness",
+    "ad-supported-store-release"
+  ],
+  "paths": {
+    "rulesDir": "harness/rules",
+    "specsDir": "harness/specs",
+    "adrsDir": "harness/adrs",
+    "contractsDir": "harness/contracts",
+    "templatesDir": "harness/templates",
+    "reportsDir": "reports"
+  },
+  "requiredFiles": [
+    "harness/rules/golden-rules.md",
+    "harness/rules/constraints.md",
+    "harness/templates/feature-spec.md",
+    "harness/templates/adr.md",
+    "harness/templates/contract.md"
+  ],
+  "criticalChecks": [
+    "manifest-present",
+    "golden-rules-present",
+    "constraints-present",
+    "feature-spec-has-acceptance"
+  ]
+}
