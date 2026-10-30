@@ -296,7 +296,7 @@ class _HintBar extends StatelessWidget {
           children: <Widget>[
             const Expanded(
               child: Text(
-                'Drag to correct the glide, release to drop. Only the overlap survives.',
+                'Tap or swipe to drop. Drags only trim the glide. Perfect drops keep your width.',
                 style: TextStyle(
                   color: Colors.white70,
                   fontSize: 13,
@@ -306,7 +306,9 @@ class _HintBar extends StatelessWidget {
             ),
             const SizedBox(width: 12),
             Text(
-              controller.paceLabel,
+              controller.lastDropPerfect
+                  ? 'Perfect x${controller.perfectStreak}'
+                  : controller.paceLabel,
               style: const TextStyle(
                 color: Color(0xFFFFD18B),
                 fontSize: 14,

@@ -27,8 +27,13 @@ class SwipeStackController extends ChangeNotifier {
   static const double baseMoveSpeed = 0.32;
   static const double speedTierDelta = 0.12;
   static const double minVisibleWidth = 0.08;
-  static const double maxSwipeDriftUnitsPerSecond = 0.42;
+  static const double maxSwipeDriftUnitsPerSecond = 0.18;
   static const double dragNudgeScale = 1.18;
+  static const double maxNudgePerBox = 0.06;
+  static const double perfectTolerance = 0.015;
+  static const double perfectGrowth = 0.03;
+  static const int perfectStreakForGrowth = 3;
+  static const double baseWidth = 0.74;
 
   final BestStackStore _bestStackStore;
   final VoidCallback? _onDrop;
@@ -37,7 +42,11 @@ class SwipeStackController extends ChangeNotifier {
   final math.Random _random;
 
   final List<BoxSegment> _stackedBoxes = <BoxSegment>[
-    const BoxSegment(centerX: 0.5, widthFactor: 0.74, color: Color(0xFF45647A)),
+    const BoxSegment(
+      centerX: 0.5,
+      widthFactor: baseWidth,
+      color: Color(0xFF45647A),
+    ),
   ];
 
   Size _playfieldSize = Size.zero;
@@ -50,9 +59,12 @@ class SwipeStackController extends ChangeNotifier {
   double _movingDirection = 1;
   double _dropProgressUnits = 0;
   double _dropDriftUnitsPerSecond = 0;
+  double _nudgeOffset = 0;
+  int _perfectStreak = 0;
+  bool _lastDropPerfect = false;
   BoxSegment _movingBox = const BoxSegment(
     centerX: 0.5,
-    widthFactor: 0.74,
+    widthFactor: baseWidth,
     color: Color(0xFFFFB14C),
   );
 
@@ -65,6 +77,11 @@ class SwipeStackController extends ChangeNotifier {
   bool get isInitialized => _initialized;
   bool get isGameOver => _isGameOver;
   bool get isDropping => _isDropping;
+  int get perfectStreak => _perfectStreak;
+  bool get lastDropPerfect => _lastDropPerfect;
+  bool get isPerfectAligned =>
+      (_movingBox.centerX - _stackedBoxes.last.centerX).abs() <=
+      perfectTolerance;
   int get speedTier => _stackCount ~/ 5;
   double get moveSpeed => baseMoveSpeed + (speedTier * speedTierDelta);
   double get dropSpeed => baseDropSpeedUnitsPerSecond + (speedTier * 1.05);
@@ -81,6 +98,7 @@ class SwipeStackController extends ChangeNotifier {
 
   String get alignmentLabel {
     final ratio = projectedOverlapRatio;
+    if (isPerfectAligned) return 'Perfect';
     if (ratio >= 0.94) return 'Locked';
     if (ratio >= successThreshold) return 'Stackable';
     return 'Risk';
@@ -174,9 +192,16 @@ class SwipeStackController extends ChangeNotifier {
       return;
     }
 
-    _setMovingCenterX(
-      _movingCenterX + ((deltaX / _playfieldSize.width) * dragNudgeScale),
-    );
+    final requested =
+        _nudgeOffset + ((deltaX / _playfieldSize.width) * dragNudgeScale);
+    final nextOffset = requested.clamp(-maxNudgePerBox, maxNudgePerBox);
+    final step = nextOffset - _nudgeOffset;
+    if (step == 0) {
+      return;
+    }
+    final before = _movingCenterX;
+    _setMovingCenterX(before + step);
+    _nudgeOffset += _movingCenterX - before;
     notifyListeners();
   }
 
@@ -201,6 +226,7 @@ class SwipeStackController extends ChangeNotifier {
     bool isGameOver = false,
     bool isDropping = false,
     double movingDirection = 1,
+    int perfectStreak = 0,
   }) {
     _stackedBoxes
       ..clear()
@@ -214,6 +240,9 @@ class SwipeStackController extends ChangeNotifier {
     _movingDirection = movingDirection;
     _dropProgressUnits = 0;
     _dropDriftUnitsPerSecond = 0;
+    _nudgeOffset = 0;
+    _perfectStreak = perfectStreak;
+    _lastDropPerfect = false;
   }
 
   void _resolveDrop() {
@@ -222,21 +251,39 @@ class SwipeStackController extends ChangeNotifier {
     final overlapRight = math.min(target.right, _movingBox.right);
     final overlapWidth = overlapRight - overlapLeft;
     final overlapRatio = overlapWidth / _movingBox.widthFactor;
-    final survivedWidth = math.max(overlapWidth, minVisibleWidth);
+    final isPerfect = isPerfectAligned;
 
     if (overlapWidth <= 0 || overlapRatio < successThreshold) {
       _isDropping = false;
       _isGameOver = true;
+      _perfectStreak = 0;
+      _lastDropPerfect = false;
       _onFail?.call();
       notifyListeners();
       return;
     }
 
-    final landedBox = BoxSegment(
-      centerX: (overlapLeft + overlapRight) / 2,
-      widthFactor: survivedWidth,
-      color: _boxColorFor(_stackCount + 1),
-    );
+    final BoxSegment landedBox;
+    if (isPerfect) {
+      _perfectStreak += 1;
+      _lastDropPerfect = true;
+      final grownWidth = _perfectStreak >= perfectStreakForGrowth
+          ? math.min(baseWidth, target.widthFactor + perfectGrowth)
+          : target.widthFactor;
+      landedBox = BoxSegment(
+        centerX: target.centerX.clamp(grownWidth / 2, 1 - grownWidth / 2),
+        widthFactor: grownWidth,
+        color: _boxColorFor(_stackCount + 1),
+      );
+    } else {
+      _perfectStreak = 0;
+      _lastDropPerfect = false;
+      landedBox = BoxSegment(
+        centerX: (overlapLeft + overlapRight) / 2,
+        widthFactor: math.max(overlapWidth, minVisibleWidth),
+        color: _boxColorFor(_stackCount + 1),
+      );
+    }
 
     _stackedBoxes.add(landedBox);
     _stackCount += 1;
@@ -289,6 +336,7 @@ class SwipeStackController extends ChangeNotifier {
       previousCenterX: previousCenterX,
     );
     _movingDirection = _random.nextBool() ? 1 : -1;
+    _nudgeOffset = 0;
     return BoxSegment(
       centerX: centerX,
       widthFactor: widthFactor,
@@ -302,11 +350,13 @@ class SwipeStackController extends ChangeNotifier {
       ..add(
         const BoxSegment(
           centerX: 0.5,
-          widthFactor: 0.74,
+          widthFactor: baseWidth,
           color: Color(0xFF45647A),
         ),
       );
     _stackCount = 0;
+    _perfectStreak = 0;
+    _lastDropPerfect = false;
     _isGameOver = false;
     _isDropping = false;
     _dropProgressUnits = 0;

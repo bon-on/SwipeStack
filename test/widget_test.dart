@@ -10,7 +10,7 @@ void main() {
     expect(find.text('Swipe to line up'), findsOneWidget);
     expect(
       find.text(
-        'Drag to correct the glide, release to drop. Only the overlap survives.',
+        'Tap or swipe to drop. Drags only trim the glide. Perfect drops keep your width.',
       ),
       findsOneWidget,
     );

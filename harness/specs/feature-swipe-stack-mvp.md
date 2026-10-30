@@ -29,8 +29,13 @@ box drops, and visible stacking pressure.
 - Use harness-lab artifacts as the source of truth before and during gameplay
   implementation work.
 - Let a top box move horizontally until the player taps to drop it.
-- Let horizontal drag reposition the active box, and let release drop it with a
-  small amount of drift carry so the title's swipe interaction is meaningful.
+- Let horizontal drag make a small, capped correction to the active box (at
+  most `maxNudgePerBox` of the playfield width per box) so timing stays the core
+  skill, and let release drop it with a small amount of drift carry so the
+  title's swipe interaction is meaningful.
+- Reward perfect drops: a box landing within `perfectTolerance` of the previous
+  center snaps to it and keeps its full width, and a streak of 3 or more perfect
+  drops regrows the width up to the starting width.
 - Show readable alignment feedback before the drop so players can learn timing
   and risk without relying on guesswork.
 - Count each successful stack as score and increase horizontal speed every 5
@@ -45,8 +50,12 @@ box drops, and visible stacking pressure.
 ## Acceptance Criteria
 - The game starts and runs from one Flutter codebase on iPhone and Android.
 - Tapping during active play drops the moving box immediately.
-- Dragging horizontally during active play nudges the moving box, and releasing
-  a drag drops it without bypassing the deterministic overlap rule.
+- Dragging horizontally during active play nudges the moving box by no more
+  than the per-box cap, and releasing a drag drops it without bypassing the
+  deterministic overlap rule.
+- A perfect drop keeps the previous width, shows the perfect streak in the HUD,
+  and from the third consecutive perfect drop grows the width up to the
+  starting width; any imperfect drop resets the streak.
 - A dropped box stacks successfully only when its horizontal overlap with the
   previous top box meets the deterministic success rule.
 - The game ends immediately when a dropped box misses the success threshold.
