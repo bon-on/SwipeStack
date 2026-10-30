@@ -9,6 +9,7 @@ and only the overlapping section survives on each successful stack.
 
 - Swipe horizontally to line up the active box, then release to drop.
 - Tap to drop immediately when no correction is needed.
+- Keyboard: Space/Enter/ArrowDown drops, Left/Right (or A/D) nudge, R restarts.
 - Each successful stack adds 1 point to the run.
 - Every 5 successful stacks increases horizontal movement speed.
 - Missing the overlap threshold ends the run immediately.

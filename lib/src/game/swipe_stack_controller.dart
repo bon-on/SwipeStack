@@ -30,6 +30,10 @@ class SwipeStackController extends ChangeNotifier {
   static const double maxSwipeDriftUnitsPerSecond = 0.18;
   static const double dragNudgeScale = 1.18;
   static const double maxNudgePerBox = 0.06;
+  static const double keyboardNudgeStep = 0.02;
+  // Speed stops rising here: at 0.92 playfield widths per second the box still
+  // crosses the narrowest lane in a humanly reactable time.
+  static const int maxSpeedTier = 5;
   static const double perfectTolerance = 0.015;
   static const double perfectGrowth = 0.03;
   static const int perfectStreakForGrowth = 3;
@@ -83,8 +87,11 @@ class SwipeStackController extends ChangeNotifier {
       (_movingBox.centerX - _stackedBoxes.last.centerX).abs() <=
       perfectTolerance;
   int get speedTier => _stackCount ~/ 5;
-  double get moveSpeed => baseMoveSpeed + (speedTier * speedTierDelta);
-  double get dropSpeed => baseDropSpeedUnitsPerSecond + (speedTier * 1.05);
+  int get effectiveSpeedTier => math.min(speedTier, maxSpeedTier);
+  bool get isAtMaxSpeed => speedTier >= maxSpeedTier;
+  double get moveSpeed => baseMoveSpeed + (effectiveSpeedTier * speedTierDelta);
+  double get dropSpeed =>
+      baseDropSpeedUnitsPerSecond + (effectiveSpeedTier * 1.05);
   double get dropProgress =>
       (_dropProgressUnits / verticalTravelUnits).clamp(0.0, 1.0);
   double get overlapTargetWidth => _stackedBoxes.last.widthFactor;
@@ -192,8 +199,20 @@ class SwipeStackController extends ChangeNotifier {
       return;
     }
 
-    final requested =
-        _nudgeOffset + ((deltaX / _playfieldSize.width) * dragNudgeScale);
+    _applyNudge((deltaX / _playfieldSize.width) * dragNudgeScale);
+  }
+
+  /// Keyboard nudge: one fixed step left (-1) or right (+1), sharing the same
+  /// per-box cap as drag nudging.
+  void nudgeByKey(int direction) {
+    if (_isGameOver || _isDropping || direction == 0) {
+      return;
+    }
+    _applyNudge(direction.sign * keyboardNudgeStep);
+  }
+
+  void _applyNudge(double units) {
+    final requested = _nudgeOffset + units;
     final nextOffset = requested.clamp(-maxNudgePerBox, maxNudgePerBox);
     final step = nextOffset - _nudgeOffset;
     if (step == 0) {

@@ -375,5 +375,93 @@ void main() {
 
       expect((controller.movingBox.centerX - 0.58).abs(), greaterThan(0.05));
     });
+
+    test('speed stops rising after the max speed tier', () {
+      final controller = SwipeStackController(
+        bestStackStore: _InMemoryBestStackStore(),
+        random: math.Random(3),
+      );
+      const stack = <BoxSegment>[
+        BoxSegment(centerX: 0.5, widthFactor: 0.74, color: Color(0xFF45647A)),
+      ];
+      const moving = BoxSegment(
+        centerX: 0.5,
+        widthFactor: 0.74,
+        color: Color(0xFFFFB14C),
+      );
+
+      controller.debugSetRun(
+        stack: stack,
+        movingBox: moving,
+        stackCount: SwipeStackController.maxSpeedTier * 5,
+      );
+      final capSpeed = controller.moveSpeed;
+      final capDrop = controller.dropSpeed;
+      expect(controller.isAtMaxSpeed, isTrue);
+
+      controller.debugSetRun(stack: stack, movingBox: moving, stackCount: 200);
+      expect(controller.moveSpeed, capSpeed);
+      expect(controller.dropSpeed, capDrop);
+      expect(capSpeed, closeTo(0.92, 1e-9));
+    });
+
+    test('keyboard nudge steps within the per-box cap', () {
+      final controller = SwipeStackController(
+        bestStackStore: _InMemoryBestStackStore(),
+        random: math.Random(4),
+      );
+      controller.debugSetRun(
+        stack: const <BoxSegment>[
+          BoxSegment(centerX: 0.5, widthFactor: 0.74, color: Color(0xFF45647A)),
+        ],
+        movingBox: const BoxSegment(
+          centerX: 0.5,
+          widthFactor: 0.4,
+          color: Color(0xFFFFB14C),
+        ),
+      );
+
+      controller.nudgeByKey(1);
+      expect(
+        controller.movingBox.centerX,
+        closeTo(0.5 + SwipeStackController.keyboardNudgeStep, 1e-9),
+      );
+      for (var i = 0; i < 10; i += 1) {
+        controller.nudgeByKey(1);
+      }
+      expect(
+        controller.movingBox.centerX,
+        closeTo(0.5 + SwipeStackController.maxNudgePerBox, 1e-9),
+      );
+      for (var i = 0; i < 20; i += 1) {
+        controller.nudgeByKey(-1);
+      }
+      expect(
+        controller.movingBox.centerX,
+        closeTo(0.5 - SwipeStackController.maxNudgePerBox, 1e-9),
+      );
+    });
+
+    test('keyboard nudge is ignored while dropping or after game over', () {
+      final controller = SwipeStackController(
+        bestStackStore: _InMemoryBestStackStore(),
+        random: math.Random(5),
+      );
+      const stack = <BoxSegment>[
+        BoxSegment(centerX: 0.5, widthFactor: 0.74, color: Color(0xFF45647A)),
+      ];
+      const moving = BoxSegment(
+        centerX: 0.5,
+        widthFactor: 0.5,
+        color: Color(0xFFFFB14C),
+      );
+      controller.debugSetRun(stack: stack, movingBox: moving, isDropping: true);
+      controller.nudgeByKey(1);
+      expect(controller.movingBox.centerX, 0.5);
+
+      controller.debugSetRun(stack: stack, movingBox: moving, isGameOver: true);
+      controller.nudgeByKey(-1);
+      expect(controller.movingBox.centerX, 0.5);
+    });
   });
 }

@@ -39,7 +39,14 @@ box drops, and visible stacking pressure.
 - Show readable alignment feedback before the drop so players can learn timing
   and risk without relying on guesswork.
 - Count each successful stack as score and increase horizontal speed every 5
-  successful stacks.
+  successful stacks, up to `maxSpeedTier` (5): beyond that the move and drop
+  speeds stop rising and the HUD shows `MAX`, so late runs stay reactable.
+- Support keyboard play on web/desktop: Space, Enter, or ArrowDown drops;
+  ArrowLeft/ArrowRight (or A/D) nudge by `keyboardNudgeStep` within the same
+  `maxNudgePerBox` cap as dragging; R (or Space/Enter/ArrowDown on the game-over
+  card) restarts. Held-key repeat events are ignored.
+- Center the play column with a maximum width of 520 logical pixels on wide
+  viewports; phone portrait keeps the full width.
 - Make sound effects mandatory for drop, successful stack, and failed stack
   outcomes.
 - Persist the best stack count locally across launches.
@@ -59,7 +66,10 @@ box drops, and visible stacking pressure.
 - A dropped box stacks successfully only when its horizontal overlap with the
   previous top box meets the deterministic success rule.
 - The game ends immediately when a dropped box misses the success threshold.
-- Horizontal movement speed increases after every 5 successful stacks.
+- Horizontal movement speed increases after every 5 successful stacks and is
+  capped at speed tier `maxSpeedTier`.
+- Keyboard drop and nudge follow the same rules as tap and drag (nudges stay
+  within the per-box cap; no drops while a box is falling or after game over).
 - Drop, stack success, and game-over failure events trigger audible feedback.
 - Ads never interrupt active play; banners occupy their own safe-area slot and
   interstitials are only eligible after completed runs.

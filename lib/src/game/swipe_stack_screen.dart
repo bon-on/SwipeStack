@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter/services.dart';
 
 import '../ads/ad_banner.dart';
 import '../ads/ad_service.dart';
@@ -11,9 +12,15 @@ import 'swipe_stack_controller.dart';
 import 'swipe_stack_painter.dart';
 
 class SwipeStackScreen extends StatefulWidget {
-  const SwipeStackScreen({super.key, this.enableAds = false});
+  const SwipeStackScreen({super.key, this.enableAds = false, this.controller});
 
   final bool enableAds;
+
+  /// Injected for tests; when null the screen creates and owns its controller.
+  final SwipeStackController? controller;
+
+  /// Max width of the play column on wide (desktop) viewports.
+  static const double maxContentWidth = 520;
 
   @override
   State<SwipeStackScreen> createState() => _SwipeStackScreenState();
@@ -24,6 +31,7 @@ class _SwipeStackScreenState extends State<SwipeStackScreen>
   late final AudioController _audioController;
   late final SwipeStackController _controller;
   late final Ticker _ticker;
+  final FocusNode _focusNode = FocusNode(debugLabel: 'SwipeStackPlay');
   Duration? _previousTick;
   bool _tickerStarted = false;
   bool _wasGameOver = false;
@@ -33,12 +41,15 @@ class _SwipeStackScreenState extends State<SwipeStackScreen>
   void initState() {
     super.initState();
     _audioController = AudioController();
-    _controller = SwipeStackController(
-      bestStackStore: BestStackStore(),
-      onDrop: () => unawaited(_audioController.playDrop()),
-      onStackSuccess: () => unawaited(_audioController.playStackSuccess()),
-      onFail: () => unawaited(_audioController.playFail()),
-    )..addListener(_handleGameOverAds);
+    _controller =
+        widget.controller ??
+        SwipeStackController(
+          bestStackStore: BestStackStore(),
+          onDrop: () => unawaited(_audioController.playDrop()),
+          onStackSuccess: () => unawaited(_audioController.playStackSuccess()),
+          onFail: () => unawaited(_audioController.playFail()),
+        );
+    _controller.addListener(_handleGameOverAds);
     _ticker = createTicker(_handleTick);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(_bootstrap());
@@ -50,7 +61,10 @@ class _SwipeStackScreenState extends State<SwipeStackScreen>
     _controller.removeListener(_handleGameOverAds);
     _ticker.dispose();
     unawaited(_audioController.dispose());
-    _controller.dispose();
+    if (widget.controller == null) {
+      _controller.dispose();
+    }
+    _focusNode.dispose();
     super.dispose();
   }
 
@@ -81,6 +95,50 @@ class _SwipeStackScreenState extends State<SwipeStackScreen>
         (elapsed - previousTick).inMicroseconds /
         Duration.microsecondsPerSecond;
     _controller.update(deltaSeconds);
+  }
+
+  KeyEventResult _onKeyEvent(FocusNode node, KeyEvent event) {
+    // Ignore key repeat so a held key cannot drop several boxes in a row.
+    if (event is KeyUpEvent || event is KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    // Leave browser/OS shortcuts (Cmd/Ctrl+R etc.) alone.
+    if (HardwareKeyboard.instance.isControlPressed ||
+        HardwareKeyboard.instance.isMetaPressed ||
+        HardwareKeyboard.instance.isAltPressed) {
+      return KeyEventResult.ignored;
+    }
+    final key = event.logicalKey;
+    final isDropKey =
+        key == LogicalKeyboardKey.space ||
+        key == LogicalKeyboardKey.enter ||
+        key == LogicalKeyboardKey.numpadEnter ||
+        key == LogicalKeyboardKey.arrowDown;
+    if (_controller.isGameOver) {
+      if (isDropKey || key == LogicalKeyboardKey.keyR) {
+        _controller.restart();
+        return KeyEventResult.handled;
+      }
+      return KeyEventResult.ignored;
+    }
+    if (isDropKey) {
+      _controller.drop();
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowLeft || key == LogicalKeyboardKey.keyA) {
+      _controller.nudgeByKey(-1);
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowRight ||
+        key == LogicalKeyboardKey.keyD) {
+      _controller.nudgeByKey(1);
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.keyR) {
+      _controller.restart();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
   }
 
   Future<void> _bootstrap() async {
@@ -115,110 +173,126 @@ class _SwipeStackScreenState extends State<SwipeStackScreen>
             end: Alignment.bottomRight,
           ),
         ),
-        child: SafeArea(
-          child: AnimatedBuilder(
-            animation: _controller,
-            builder: (context, _) {
-              return Padding(
-                padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: <Widget>[
-                    _Header(controller: _controller),
-                    const SizedBox(height: 18),
-                    Expanded(
-                      child: LayoutBuilder(
-                        builder: (context, constraints) {
-                          final stageSize = Size(
-                            constraints.maxWidth,
-                            constraints.maxHeight,
-                          );
-                          _controller.setPlayfieldSize(stageSize);
-                          return GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap: _controller.isGameOver
-                                ? null
-                                : _controller.drop,
-                            onHorizontalDragUpdate: _controller.isGameOver
-                                ? null
-                                : (details) {
-                                    _controller.nudgeMovingBox(
-                                      details.primaryDelta ?? 0,
-                                    );
-                                  },
-                            onHorizontalDragEnd: _controller.isGameOver
-                                ? null
-                                : (details) {
-                                    _controller.dropWithSwipeVelocity(
-                                      details.primaryVelocity ?? 0,
-                                    );
-                                  },
-                            child: Stack(
-                              children: <Widget>[
-                                Positioned.fill(
-                                  child: CustomPaint(
-                                    painter: SwipeStackPainter(
-                                      controller: _controller,
-                                    ),
-                                  ),
-                                ),
-                                Positioned(
-                                  top: 18,
-                                  left: 18,
-                                  child: DecoratedBox(
-                                    decoration: BoxDecoration(
-                                      color: Colors.black.withValues(
-                                        alpha: 0.22,
-                                      ),
-                                      borderRadius: BorderRadius.circular(14),
-                                    ),
-                                    child: const Padding(
-                                      padding: EdgeInsets.symmetric(
-                                        horizontal: 12,
-                                        vertical: 8,
-                                      ),
-                                      child: Text(
-                                        'Swipe to line up',
-                                        style: TextStyle(
-                                          color: Colors.white70,
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w600,
+        child: Focus(
+          focusNode: _focusNode,
+          autofocus: true,
+          onKeyEvent: _onKeyEvent,
+          child: SafeArea(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(
+                  maxWidth: SwipeStackScreen.maxContentWidth,
+                ),
+                child: AnimatedBuilder(
+                  animation: _controller,
+                  builder: (context, _) {
+                    return Padding(
+                      padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: <Widget>[
+                          _Header(controller: _controller),
+                          const SizedBox(height: 18),
+                          Expanded(
+                            child: LayoutBuilder(
+                              builder: (context, constraints) {
+                                final stageSize = Size(
+                                  constraints.maxWidth,
+                                  constraints.maxHeight,
+                                );
+                                _controller.setPlayfieldSize(stageSize);
+                                return GestureDetector(
+                                  behavior: HitTestBehavior.opaque,
+                                  onTap: _controller.isGameOver
+                                      ? null
+                                      : _controller.drop,
+                                  onHorizontalDragUpdate: _controller.isGameOver
+                                      ? null
+                                      : (details) {
+                                          _controller.nudgeMovingBox(
+                                            details.primaryDelta ?? 0,
+                                          );
+                                        },
+                                  onHorizontalDragEnd: _controller.isGameOver
+                                      ? null
+                                      : (details) {
+                                          _controller.dropWithSwipeVelocity(
+                                            details.primaryVelocity ?? 0,
+                                          );
+                                        },
+                                  child: Stack(
+                                    children: <Widget>[
+                                      Positioned.fill(
+                                        child: CustomPaint(
+                                          painter: SwipeStackPainter(
+                                            controller: _controller,
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                  ),
-                                ),
-                                Positioned(
-                                  top: 18,
-                                  right: 18,
-                                  child: _AlignmentBadge(
-                                    label: _controller.alignmentLabel,
-                                    ratio: _controller.projectedOverlapRatio,
-                                  ),
-                                ),
-                                if (_controller.isGameOver)
-                                  Positioned.fill(
-                                    child: Center(
-                                      child: _GameOverCard(
-                                        stackCount: _controller.stackCount,
-                                        bestStack: _controller.bestStack,
-                                        onRestart: _controller.restart,
+                                      Positioned(
+                                        top: 18,
+                                        left: 18,
+                                        child: DecoratedBox(
+                                          decoration: BoxDecoration(
+                                            color: Colors.black.withValues(
+                                              alpha: 0.22,
+                                            ),
+                                            borderRadius: BorderRadius.circular(
+                                              14,
+                                            ),
+                                          ),
+                                          child: const Padding(
+                                            padding: EdgeInsets.symmetric(
+                                              horizontal: 12,
+                                              vertical: 8,
+                                            ),
+                                            child: Text(
+                                              'Swipe to line up',
+                                              style: TextStyle(
+                                                color: Colors.white70,
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
                                       ),
-                                    ),
+                                      Positioned(
+                                        top: 18,
+                                        right: 18,
+                                        child: _AlignmentBadge(
+                                          label: _controller.alignmentLabel,
+                                          ratio:
+                                              _controller.projectedOverlapRatio,
+                                        ),
+                                      ),
+                                      if (_controller.isGameOver)
+                                        Positioned.fill(
+                                          child: Center(
+                                            child: _GameOverCard(
+                                              stackCount:
+                                                  _controller.stackCount,
+                                              bestStack: _controller.bestStack,
+                                              onRestart: _controller.restart,
+                                            ),
+                                          ),
+                                        ),
+                                    ],
                                   ),
-                              ],
+                                );
+                              },
                             ),
-                          );
-                        },
+                          ),
+                          const SizedBox(height: 16),
+                          _HintBar(controller: _controller),
+                          AdBanner(enabled: widget.enableAds),
+                        ],
                       ),
-                    ),
-                    const SizedBox(height: 16),
-                    _HintBar(controller: _controller),
-                    AdBanner(enabled: widget.enableAds),
-                  ],
+                    );
+                  },
                 ),
-              );
-            },
+              ),
+            ),
           ),
         ),
       ),
@@ -266,7 +340,9 @@ class _Header extends StatelessWidget {
             Expanded(
               child: _StatChip(
                 label: 'Speed',
-                value: 'T${controller.speedTier + 1}',
+                value: controller.isAtMaxSpeed
+                    ? 'MAX'
+                    : 'T${controller.speedTier + 1}',
                 accent: const Color(0xFF87A2FF),
               ),
             ),
