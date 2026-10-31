@@ -153,6 +153,7 @@ void main() {
     expect(find.byTooltip('Sound off'), findsOneWidget);
     expect(store.muted, isTrue);
     expect(store.writes, 1);
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'SwipeStackPlay');
 
     calls.clear();
     await tester.sendKeyEvent(LogicalKeyboardKey.space);

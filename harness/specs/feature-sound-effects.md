@@ -23,7 +23,7 @@ The drop, stack-success and fail sounds only play through the native iOS/Android
 
 ## Scope
 - `lib/src/audio/sound_fx.dart` (`SoundFx`) replaces `AudioController`. The controller hooks stay the same: `onDrop` -> `drop`, `onStackSuccess` -> `stack_success`, `onFail` -> `fail` (once per game event, never per frame).
-- Web: HTML `Audio` per asset (`web_sound_web.dart`, conditional import with a stub); reset `currentTime`, ignore `play()` rejections (autoplay policy). Sounds are triggered by taps and keys, which are user gestures.
+- Web: HTML `Audio` per asset (`web_sound_web.dart`, conditional import with a stub); reset `currentTime`, ignore `play()` rejections (autoplay policy). `drop` is triggered by a tap or key (a user gesture); `stack_success` and `fail` fire from the game ticker after the drop animation and rely on the browser's sticky user activation. Unverified on iOS Safari.
 - Native: the `swipe_stack/audio` MethodChannel keeps `playDrop`, `playStackSuccess`, `playFail`, `disposeAudio`. iOS uses audio session `.ambient`. Missing plugin or platform exceptions are swallowed.
 - Mute: a sound `IconButton` next to the `?` button (`Icons.volume_up_rounded` / `Icons.volume_off_rounded`, tooltip "Sound on" / "Sound off") persists `sound_muted_v1` (bool, default on) through an injectable `SoundMuteStore`. There is no portal platform layer (Pages and mobile only), so the effective mute is the user mute. The sound-state load never delays the game start.
 - The toggle follows the `?` button: it sits behind the tutorial card while it is open, refocuses the play area after a press when the card is closed, and adds no keyboard shortcut.
