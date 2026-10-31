@@ -4,6 +4,7 @@ title: SwipeStack PWA GitHub Pages deployment contract
 status: active
 related_specs:
   - feature-swipe-stack-pwa-pages
+  - feature-sound-effects
 evidence_files:
   - docs/pwa-github-pages.md
   - reports/swipe-stack-pwa-pages-verification.md

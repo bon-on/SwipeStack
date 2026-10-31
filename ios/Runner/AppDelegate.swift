@@ -61,7 +61,7 @@ import UIKit
 
   private func configureAudioSession() {
     do {
-      try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
+      try AVAudioSession.sharedInstance().setCategory(.ambient, mode: .default)
       try AVAudioSession.sharedInstance().setActive(true)
     } catch {
     }

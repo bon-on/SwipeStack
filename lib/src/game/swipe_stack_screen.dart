@@ -6,7 +6,8 @@ import 'package:flutter/services.dart';
 
 import '../ads/ad_banner.dart';
 import '../ads/ad_service.dart';
-import '../audio/audio_controller.dart';
+import '../audio/sound_fx.dart';
+import '../audio/sound_mute_store.dart';
 import '../persistence/best_stack_store.dart';
 import 'how_to_play.dart';
 import 'swipe_stack_controller.dart';
@@ -18,6 +19,7 @@ class SwipeStackScreen extends StatefulWidget {
     this.enableAds = false,
     this.controller,
     this.howToPlayStore = const HowToPlayStore(),
+    this.soundMuteStore = const SoundMuteStore(),
   });
 
   final bool enableAds;
@@ -28,6 +30,9 @@ class SwipeStackScreen extends StatefulWidget {
   /// First-run tutorial flag storage; tests inject a fake.
   final HowToPlayStore howToPlayStore;
 
+  /// Persisted user mute choice; tests inject a fake.
+  final SoundMuteStore soundMuteStore;
+
   /// Max width of the play column on wide (desktop) viewports.
   static const double maxContentWidth = 520;
 
@@ -37,7 +42,7 @@ class SwipeStackScreen extends StatefulWidget {
 
 class _SwipeStackScreenState extends State<SwipeStackScreen>
     with SingleTickerProviderStateMixin {
-  late final AudioController _audioController;
+  late final SoundFx _sound;
   late final SwipeStackController _controller;
   late final Ticker _ticker;
   final FocusNode _focusNode = FocusNode(debugLabel: 'SwipeStackPlay');
@@ -56,14 +61,15 @@ class _SwipeStackScreenState extends State<SwipeStackScreen>
   void initState() {
     super.initState();
     unawaited(_checkTutorial());
-    _audioController = AudioController();
+    _sound = SoundFx(store: widget.soundMuteStore);
+    unawaited(_loadSoundMuted());
     _controller =
         widget.controller ??
         SwipeStackController(
           bestStackStore: BestStackStore(),
-          onDrop: () => unawaited(_audioController.playDrop()),
-          onStackSuccess: () => unawaited(_audioController.playStackSuccess()),
-          onFail: () => unawaited(_audioController.playFail()),
+          onDrop: () => _sound.play(Sfx.drop),
+          onStackSuccess: () => _sound.play(Sfx.stackSuccess),
+          onFail: () => _sound.play(Sfx.fail),
         );
     _controller.addListener(_handleGameOverAds);
     _ticker = createTicker(_handleTick);
@@ -76,7 +82,7 @@ class _SwipeStackScreenState extends State<SwipeStackScreen>
   void dispose() {
     _controller.removeListener(_handleGameOverAds);
     _ticker.dispose();
-    unawaited(_audioController.dispose());
+    _sound.dispose();
     if (widget.controller == null) {
       _controller.dispose();
     }
@@ -94,6 +100,19 @@ class _SwipeStackScreenState extends State<SwipeStackScreen>
       _tutorialLoading = false;
       _showHowTo = !seen;
     });
+  }
+
+  Future<void> _loadSoundMuted() async {
+    try {
+      await _sound.initialize();
+    } catch (_) {}
+    if (mounted) setState(() {});
+  }
+
+  void _toggleSound() {
+    unawaited(_sound.setUserMuted(!_sound.userMuted).catchError((Object _) {}));
+    setState(() {});
+    if (!_tutorialBlocking) _focusNode.requestFocus();
   }
 
   void _openHowToPlay() {
@@ -190,10 +209,6 @@ class _SwipeStackScreenState extends State<SwipeStackScreen>
 
   Future<void> _bootstrap() async {
     try {
-      await _audioController.initialize();
-    } catch (_) {}
-
-    try {
       await _controller.initialize();
     } catch (_) {}
 
@@ -243,6 +258,8 @@ class _SwipeStackScreenState extends State<SwipeStackScreen>
                               _Header(
                                 controller: _controller,
                                 onHelp: _openHowToPlay,
+                                soundMuted: _sound.userMuted,
+                                onToggleSound: _toggleSound,
                               ),
                               const SizedBox(height: 18),
                               Expanded(
@@ -386,10 +403,17 @@ const List<HowToPlayStep> _howToPlaySteps = <HowToPlayStep>[
 ];
 
 class _Header extends StatelessWidget {
-  const _Header({required this.controller, required this.onHelp});
+  const _Header({
+    required this.controller,
+    required this.onHelp,
+    required this.soundMuted,
+    required this.onToggleSound,
+  });
 
   final SwipeStackController controller;
   final VoidCallback onHelp;
+  final bool soundMuted;
+  final VoidCallback onToggleSound;
 
   @override
   Widget build(BuildContext context) {
@@ -412,6 +436,14 @@ class _Header extends StatelessWidget {
               onPressed: onHelp,
               tooltip: 'How to play',
               icon: const Icon(Icons.help_outline, color: Colors.white70),
+            ),
+            IconButton(
+              onPressed: onToggleSound,
+              tooltip: soundMuted ? 'Sound off' : 'Sound on',
+              icon: Icon(
+                soundMuted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+                color: Colors.white70,
+              ),
             ),
           ],
         ),

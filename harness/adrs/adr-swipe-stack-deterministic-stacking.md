@@ -4,6 +4,7 @@ title: Use deterministic overlap stacking in a shared Flutter runtime
 status: accepted
 related_specs:
   - feature-swipe-stack-mvp
+  - feature-sound-effects
 ---
 
 # ADR: Use deterministic overlap stacking in a shared Flutter runtime

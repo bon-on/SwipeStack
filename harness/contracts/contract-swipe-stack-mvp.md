@@ -4,6 +4,7 @@ title: SwipeStack MVP gameplay and feedback contract
 status: draft
 related_specs:
   - feature-swipe-stack-mvp
+  - feature-sound-effects
 evidence_files:
   - reports/harness-apply-skill-note.md
 ---
