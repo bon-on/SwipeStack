@@ -1,11 +1,17 @@
 import 'package:flutter/material.dart';
 
+import '../game/how_to_play.dart';
 import '../game/swipe_stack_screen.dart';
 
 class SwipeStackApp extends StatelessWidget {
-  const SwipeStackApp({super.key, this.enableAds = false});
+  const SwipeStackApp({
+    super.key,
+    this.enableAds = false,
+    this.howToPlayStore = const HowToPlayStore(),
+  });
 
   final bool enableAds;
+  final HowToPlayStore howToPlayStore;
 
   @override
   Widget build(BuildContext context) {
@@ -20,7 +26,10 @@ class SwipeStackApp extends StatelessWidget {
         ),
         scaffoldBackgroundColor: const Color(0xFF0D1622),
       ),
-      home: SwipeStackScreen(enableAds: enableAds),
+      home: SwipeStackScreen(
+        enableAds: enableAds,
+        howToPlayStore: howToPlayStore,
+      ),
     );
   }
 }

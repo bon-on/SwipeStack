@@ -1,9 +1,18 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:swipe_stack/src/app/swipe_stack_app.dart';
+import 'package:swipe_stack/src/game/how_to_play.dart';
+
+class _SeenStore extends HowToPlayStore {
+  const _SeenStore();
+  @override
+  Future<bool> loadSeen() async => true;
+  @override
+  Future<void> markSeen() async {}
+}
 
 void main() {
   testWidgets('SwipeStack loads stacking HUD', (WidgetTester tester) async {
-    await tester.pumpWidget(const SwipeStackApp());
+    await tester.pumpWidget(const SwipeStackApp(howToPlayStore: _SeenStore()));
     await tester.pump();
 
     expect(find.text('SwipeStack'), findsOneWidget);

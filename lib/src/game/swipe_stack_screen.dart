@@ -8,16 +8,25 @@ import '../ads/ad_banner.dart';
 import '../ads/ad_service.dart';
 import '../audio/audio_controller.dart';
 import '../persistence/best_stack_store.dart';
+import 'how_to_play.dart';
 import 'swipe_stack_controller.dart';
 import 'swipe_stack_painter.dart';
 
 class SwipeStackScreen extends StatefulWidget {
-  const SwipeStackScreen({super.key, this.enableAds = false, this.controller});
+  const SwipeStackScreen({
+    super.key,
+    this.enableAds = false,
+    this.controller,
+    this.howToPlayStore = const HowToPlayStore(),
+  });
 
   final bool enableAds;
 
   /// Injected for tests; when null the screen creates and owns its controller.
   final SwipeStackController? controller;
+
+  /// First-run tutorial flag storage; tests inject a fake.
+  final HowToPlayStore howToPlayStore;
 
   /// Max width of the play column on wide (desktop) viewports.
   static const double maxContentWidth = 520;
@@ -36,10 +45,17 @@ class _SwipeStackScreenState extends State<SwipeStackScreen>
   bool _tickerStarted = false;
   bool _wasGameOver = false;
   int _completedRuns = 0;
+  // The simulation and all input are paused while the first-run check is
+  // pending (_tutorialLoading) and while the card is open (_showHowTo).
+  bool _tutorialLoading = true;
+  bool _showHowTo = false;
+
+  bool get _tutorialBlocking => _tutorialLoading || _showHowTo;
 
   @override
   void initState() {
     super.initState();
+    unawaited(_checkTutorial());
     _audioController = AudioController();
     _controller =
         widget.controller ??
@@ -68,6 +84,34 @@ class _SwipeStackScreenState extends State<SwipeStackScreen>
     super.dispose();
   }
 
+  Future<void> _checkTutorial() async {
+    var seen = false;
+    try {
+      seen = await widget.howToPlayStore.loadSeen();
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() {
+      _tutorialLoading = false;
+      _showHowTo = !seen;
+    });
+  }
+
+  void _openHowToPlay() {
+    setState(() => _showHowTo = true);
+  }
+
+  void _closeHowToPlay() {
+    setState(() => _showHowTo = false);
+    _focusNode.requestFocus();
+    unawaited(_markTutorialSeen());
+  }
+
+  Future<void> _markTutorialSeen() async {
+    try {
+      await widget.howToPlayStore.markSeen();
+    } catch (_) {}
+  }
+
   void _handleGameOverAds() {
     if (!widget.enableAds) {
       _wasGameOver = _controller.isGameOver;
@@ -88,7 +132,8 @@ class _SwipeStackScreenState extends State<SwipeStackScreen>
   void _handleTick(Duration elapsed) {
     final previousTick = _previousTick;
     _previousTick = elapsed;
-    if (previousTick == null) {
+    if (previousTick == null || _tutorialBlocking) {
+      // Still record the tick time so closing the card causes no time jump.
       return;
     }
     final deltaSeconds =
@@ -98,6 +143,8 @@ class _SwipeStackScreenState extends State<SwipeStackScreen>
   }
 
   KeyEventResult _onKeyEvent(FocusNode node, KeyEvent event) {
+    // The how-to-play card owns the keyboard while it is open.
+    if (_tutorialBlocking) return KeyEventResult.handled;
     // Ignore key repeat so a held key cannot drop several boxes in a row.
     if (event is KeyUpEvent || event is KeyRepeatEvent) {
       return KeyEventResult.ignored;
@@ -177,122 +224,139 @@ class _SwipeStackScreenState extends State<SwipeStackScreen>
           focusNode: _focusNode,
           autofocus: true,
           onKeyEvent: _onKeyEvent,
-          child: SafeArea(
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(
-                  maxWidth: SwipeStackScreen.maxContentWidth,
-                ),
-                child: AnimatedBuilder(
-                  animation: _controller,
-                  builder: (context, _) {
-                    return Padding(
-                      padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: <Widget>[
-                          _Header(controller: _controller),
-                          const SizedBox(height: 18),
-                          Expanded(
-                            child: LayoutBuilder(
-                              builder: (context, constraints) {
-                                final stageSize = Size(
-                                  constraints.maxWidth,
-                                  constraints.maxHeight,
-                                );
-                                _controller.setPlayfieldSize(stageSize);
-                                return GestureDetector(
-                                  behavior: HitTestBehavior.opaque,
-                                  onTap: _controller.isGameOver
-                                      ? null
-                                      : _controller.drop,
-                                  onHorizontalDragUpdate: _controller.isGameOver
-                                      ? null
-                                      : (details) {
-                                          _controller.nudgeMovingBox(
-                                            details.primaryDelta ?? 0,
-                                          );
-                                        },
-                                  onHorizontalDragEnd: _controller.isGameOver
-                                      ? null
-                                      : (details) {
-                                          _controller.dropWithSwipeVelocity(
-                                            details.primaryVelocity ?? 0,
-                                          );
-                                        },
-                                  child: Stack(
-                                    children: <Widget>[
-                                      Positioned.fill(
-                                        child: CustomPaint(
-                                          painter: SwipeStackPainter(
-                                            controller: _controller,
-                                          ),
-                                        ),
-                                      ),
-                                      Positioned(
-                                        top: 18,
-                                        left: 18,
-                                        child: DecoratedBox(
-                                          decoration: BoxDecoration(
-                                            color: Colors.black.withValues(
-                                              alpha: 0.22,
-                                            ),
-                                            borderRadius: BorderRadius.circular(
-                                              14,
-                                            ),
-                                          ),
-                                          child: const Padding(
-                                            padding: EdgeInsets.symmetric(
-                                              horizontal: 12,
-                                              vertical: 8,
-                                            ),
-                                            child: Text(
-                                              'Swipe to line up',
-                                              style: TextStyle(
-                                                color: Colors.white70,
-                                                fontSize: 14,
-                                                fontWeight: FontWeight.w600,
+          child: Stack(
+            children: <Widget>[
+              SafeArea(
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(
+                      maxWidth: SwipeStackScreen.maxContentWidth,
+                    ),
+                    child: AnimatedBuilder(
+                      animation: _controller,
+                      builder: (context, _) {
+                        return Padding(
+                          padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: <Widget>[
+                              _Header(
+                                controller: _controller,
+                                onHelp: _openHowToPlay,
+                              ),
+                              const SizedBox(height: 18),
+                              Expanded(
+                                child: LayoutBuilder(
+                                  builder: (context, constraints) {
+                                    final stageSize = Size(
+                                      constraints.maxWidth,
+                                      constraints.maxHeight,
+                                    );
+                                    _controller.setPlayfieldSize(stageSize);
+                                    return GestureDetector(
+                                      behavior: HitTestBehavior.opaque,
+                                      onTap: _controller.isGameOver
+                                          ? null
+                                          : _controller.drop,
+                                      onHorizontalDragUpdate:
+                                          _controller.isGameOver
+                                          ? null
+                                          : (details) {
+                                              _controller.nudgeMovingBox(
+                                                details.primaryDelta ?? 0,
+                                              );
+                                            },
+                                      onHorizontalDragEnd:
+                                          _controller.isGameOver
+                                          ? null
+                                          : (details) {
+                                              _controller.dropWithSwipeVelocity(
+                                                details.primaryVelocity ?? 0,
+                                              );
+                                            },
+                                      child: Stack(
+                                        children: <Widget>[
+                                          Positioned.fill(
+                                            child: CustomPaint(
+                                              painter: SwipeStackPainter(
+                                                controller: _controller,
                                               ),
                                             ),
                                           ),
-                                        ),
-                                      ),
-                                      Positioned(
-                                        top: 18,
-                                        right: 18,
-                                        child: _AlignmentBadge(
-                                          label: _controller.alignmentLabel,
-                                          ratio:
-                                              _controller.projectedOverlapRatio,
-                                        ),
-                                      ),
-                                      if (_controller.isGameOver)
-                                        Positioned.fill(
-                                          child: Center(
-                                            child: _GameOverCard(
-                                              stackCount:
-                                                  _controller.stackCount,
-                                              bestStack: _controller.bestStack,
-                                              onRestart: _controller.restart,
+                                          Positioned(
+                                            top: 18,
+                                            left: 18,
+                                            child: DecoratedBox(
+                                              decoration: BoxDecoration(
+                                                color: Colors.black.withValues(
+                                                  alpha: 0.22,
+                                                ),
+                                                borderRadius:
+                                                    BorderRadius.circular(14),
+                                              ),
+                                              child: const Padding(
+                                                padding: EdgeInsets.symmetric(
+                                                  horizontal: 12,
+                                                  vertical: 8,
+                                                ),
+                                                child: Text(
+                                                  'Swipe to line up',
+                                                  style: TextStyle(
+                                                    color: Colors.white70,
+                                                    fontSize: 14,
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                                ),
+                                              ),
                                             ),
                                           ),
-                                        ),
-                                    ],
-                                  ),
-                                );
-                              },
-                            ),
+                                          Positioned(
+                                            top: 18,
+                                            right: 18,
+                                            child: _AlignmentBadge(
+                                              label: _controller.alignmentLabel,
+                                              ratio: _controller
+                                                  .projectedOverlapRatio,
+                                            ),
+                                          ),
+                                          if (_controller.isGameOver)
+                                            Positioned.fill(
+                                              child: Center(
+                                                child: _GameOverCard(
+                                                  stackCount:
+                                                      _controller.stackCount,
+                                                  bestStack:
+                                                      _controller.bestStack,
+                                                  onRestart:
+                                                      _controller.restart,
+                                                ),
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              _HintBar(controller: _controller),
+                              AdBanner(enabled: widget.enableAds),
+                            ],
                           ),
-                          const SizedBox(height: 16),
-                          _HintBar(controller: _controller),
-                          AdBanner(enabled: widget.enableAds),
-                        ],
-                      ),
-                    );
-                  },
+                        );
+                      },
+                    ),
+                  ),
                 ),
               ),
-            ),
+              if (_showHowTo)
+                Positioned.fill(
+                  child: HowToPlayOverlay(
+                    steps: _howToPlaySteps,
+                    onClose: _closeHowToPlay,
+                  ),
+                ),
+            ],
           ),
         ),
       ),
@@ -300,23 +364,56 @@ class _SwipeStackScreenState extends State<SwipeStackScreen>
   }
 }
 
+const List<HowToPlayStep> _howToPlaySteps = <HowToPlayStep>[
+  HowToPlayStep(
+    icon: Icons.layers,
+    text:
+        'Stack boxes as high as you can. A box slides side to side: drop it '
+        'onto the tower.',
+  ),
+  HowToPlayStep(
+    icon: Icons.touch_app,
+    text:
+        'Tap or swipe to drop; dragging nudges slightly. Keyboard: Space/Enter '
+        'drop, A/D or arrows nudge.',
+  ),
+  HowToPlayStep(
+    icon: Icons.straighten,
+    text:
+        'Overlap at least 55% or the tower slips. Perfect drops keep your '
+        'width; 3 in a row regrow it.',
+  ),
+];
+
 class _Header extends StatelessWidget {
-  const _Header({required this.controller});
+  const _Header({required this.controller, required this.onHelp});
 
   final SwipeStackController controller;
+  final VoidCallback onHelp;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        const Text(
-          'SwipeStack',
-          style: TextStyle(
-            fontSize: 28,
-            fontWeight: FontWeight.w800,
-            color: Colors.white,
-          ),
+        Row(
+          children: <Widget>[
+            const Expanded(
+              child: Text(
+                'SwipeStack',
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+            IconButton(
+              onPressed: onHelp,
+              tooltip: 'How to play',
+              icon: const Icon(Icons.help_outline, color: Colors.white70),
+            ),
+          ],
         ),
         const SizedBox(height: 10),
         Row(

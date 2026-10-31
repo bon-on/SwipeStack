@@ -3,10 +3,19 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:swipe_stack/src/game/how_to_play.dart';
 import 'package:swipe_stack/src/game/swipe_stack_controller.dart';
 import 'package:swipe_stack/src/game/swipe_stack_models.dart';
 import 'package:swipe_stack/src/game/swipe_stack_screen.dart';
 import 'package:swipe_stack/src/persistence/best_stack_store.dart';
+
+class _SeenStore extends HowToPlayStore {
+  const _SeenStore();
+  @override
+  Future<bool> loadSeen() async => true;
+  @override
+  Future<void> markSeen() async {}
+}
 
 class _MemoryStore extends BestStackStore {
   @override
@@ -48,7 +57,12 @@ Future<void> _pump(
   addTearDown(tester.view.reset);
   addTearDown(controller.dispose);
   await tester.pumpWidget(
-    MaterialApp(home: SwipeStackScreen(controller: controller)),
+    MaterialApp(
+      home: SwipeStackScreen(
+        controller: controller,
+        howToPlayStore: const _SeenStore(),
+      ),
+    ),
   );
   await tester.pump();
 }
