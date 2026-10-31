@@ -1,7 +1,7 @@
 # Harness Plan Report
 
 - Title: Deliver SwipeStack cross-platform timing-stack MVP
-- Spec: `/Users/junsik.park/sources/games/SwipeStack/harness/specs/feature-swipe-stack-mvp.md`
+- Spec: `harness/specs/feature-swipe-stack-mvp.md`
 - Status: active
 
 ## Execution Order
@@ -49,8 +49,8 @@
 - `flutter test`
 - `flutter build ios --simulator`
 - `flutter build apk --debug`
-- `node /Users/junsik.park/sources/harness-lab/dist/index.js audit /Users/junsik.park/sources/games/SwipeStack --format md`
-- `node /Users/junsik.park/sources/harness-lab/dist/index.js plan /Users/junsik.park/sources/games/SwipeStack/harness/specs/feature-swipe-stack-mvp.md --format text`
+- `node <harness-lab>/dist/index.js audit . --format md`
+- `node <harness-lab>/dist/index.js plan harness/specs/feature-swipe-stack-mvp.md --format text`
 
 ## Blockers
 

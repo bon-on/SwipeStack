@@ -16,5 +16,5 @@ Response contract:
 
 iPhone install note:
 - Do not use Debug builds or `flutter install` for apps that should launch from the iPhone home screen.
-- Always use `/Users/junsik.park/sources/games/_tools/install_ios_release.sh SwipeStack` to install a standalone Release build.
+- Always use `../_tools/install_ios_release.sh SwipeStack` to install a standalone Release build.
 - Home-screen Debug launches can terminate with `Cannot create a FlutterEngine instance in debug mode without Flutter tooling or Xcode.`

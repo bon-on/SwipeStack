@@ -47,4 +47,4 @@ Directly installed iPhone builds can stop launching when their signing expires. 
 
 - `flutter test`
 - `flutter build web --release --base-href /SwipeStack/`
-- `node /Users/junsik.park/sources/harness-lab/dist/index.js audit . --format md`
+- `node <harness-lab>/dist/index.js audit . --format md`

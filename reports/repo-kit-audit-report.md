@@ -1,7 +1,7 @@
 # Harness Audit Report
 
 - Repo: SwipeStack
-- Manifest: `/Users/junsik.park/sources/games/SwipeStack/harness/manifest.json`
+- Manifest: `harness/manifest.json`
 - Policy mode: warn-block-critical
 - Stack summary: Flutter mobile timing-stack game repository with spec-driven harness artifacts
 - Detected profiles: none
@@ -19,4 +19,4 @@
 
 ## Command
 
-`node /Users/junsik.park/sources/harness-lab/dist/index.js audit /Users/junsik.park/sources/games/SwipeStack --format md`
+`node <harness-lab>/dist/index.js audit . --format md`

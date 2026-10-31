@@ -34,7 +34,7 @@ Publish SwipeStack as a Flutter web/PWA build at `https://bon-on.github.io/Swipe
 ```sh
 flutter test
 flutter build web --release --base-href /SwipeStack/
-node /Users/junsik.park/sources/harness-lab/dist/index.js audit . --format md
+node <harness-lab>/dist/index.js audit . --format md
 ```
 
 ## Evidence References
