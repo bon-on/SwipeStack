@@ -5,6 +5,7 @@ status: active
 related_specs:
   - feature-swipe-stack-pwa-pages
   - feature-sound-effects
+  - feature-retention-polish
 evidence_files:
   - docs/pwa-github-pages.md
   - reports/swipe-stack-pwa-pages-verification.md

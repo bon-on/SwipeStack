@@ -5,6 +5,7 @@ status: accepted
 related_specs:
   - feature-swipe-stack-pwa-pages
   - feature-sound-effects
+  - feature-retention-polish
 ---
 
 # ADR: Use Flutter Web and GitHub Pages for SwipeStack PWA Deployment

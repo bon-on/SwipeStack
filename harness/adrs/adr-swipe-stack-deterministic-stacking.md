@@ -5,6 +5,7 @@ status: accepted
 related_specs:
   - feature-swipe-stack-mvp
   - feature-sound-effects
+  - feature-retention-polish
 ---
 
 # ADR: Use deterministic overlap stacking in a shared Flutter runtime

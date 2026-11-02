@@ -5,6 +5,7 @@ status: draft
 related_specs:
   - feature-swipe-stack-mvp
   - feature-sound-effects
+  - feature-retention-polish
 evidence_files:
   - reports/harness-apply-skill-note.md
 ---
