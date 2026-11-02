@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'ui/tower_ui.dart';
+
 /// Remembers whether the first-run "How to play" card has been dismissed.
 ///
 /// Storage failures never break play: a read failure reports "not seen" (the
@@ -119,7 +121,6 @@ class _HowToPlayOverlayState extends State<HowToPlayOverlay> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final step = widget.steps[_index];
     return Focus(
       focusNode: _focusNode,
@@ -127,19 +128,17 @@ class _HowToPlayOverlayState extends State<HowToPlayOverlay> {
       onKeyEvent: _onKeyEvent,
       child: Stack(
         children: <Widget>[
-          const ModalBarrier(dismissible: false, color: Color(0xB3000000)),
+          const ModalBarrier(dismissible: false, color: Color(0xB3070A1A)),
           SafeArea(
             child: Center(
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 360),
-                  child: Material(
-                    color: theme.colorScheme.surfaceContainerHigh,
-                    elevation: 8,
-                    borderRadius: BorderRadius.circular(20),
+                  child: TowerPanel(
+                    padding: EdgeInsets.zero,
                     child: SingleChildScrollView(
-                      padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+                      padding: const EdgeInsets.fromLTRB(20, 20, 20, 14),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -147,18 +146,37 @@ class _HowToPlayOverlayState extends State<HowToPlayOverlay> {
                           Text(
                             'How to play',
                             textAlign: TextAlign.center,
-                            style: theme.textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.w800,
+                            style: const TextStyle(
+                              color: TowerColors.text,
+                              fontSize: 24,
+                              fontWeight: FontWeight.w900,
                             ),
                           ),
                           const SizedBox(height: 14),
-                          CircleAvatar(
-                            radius: 28,
-                            backgroundColor: theme.colorScheme.primaryContainer,
-                            child: Icon(
-                              step.icon,
-                              size: 30,
-                              color: theme.colorScheme.onPrimaryContainer,
+                          Center(
+                            child: Container(
+                              width: 64,
+                              height: 64,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                gradient: const LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: <Color>[
+                                    TowerColors.buttonTop,
+                                    TowerColors.buttonBottom,
+                                  ],
+                                ),
+                                border: Border.all(
+                                  color: const Color(0x99FFFFFF),
+                                  width: 2,
+                                ),
+                              ),
+                              child: Icon(
+                                step.icon,
+                                size: 32,
+                                color: const Color(0xFF3A2200),
+                              ),
                             ),
                           ),
                           const SizedBox(height: 14),
@@ -166,7 +184,9 @@ class _HowToPlayOverlayState extends State<HowToPlayOverlay> {
                             step.text,
                             key: const ValueKey('how-to-play-text'),
                             textAlign: TextAlign.center,
-                            style: theme.textTheme.bodyMedium?.copyWith(
+                            style: const TextStyle(
+                              color: TowerColors.textSoft,
+                              fontSize: 15,
                               height: 1.4,
                             ),
                           ),
@@ -179,13 +199,13 @@ class _HowToPlayOverlayState extends State<HowToPlayOverlay> {
                                   margin: const EdgeInsets.symmetric(
                                     horizontal: 3,
                                   ),
-                                  width: 8,
+                                  width: i == _index ? 20 : 8,
                                   height: 8,
                                   decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
+                                    borderRadius: BorderRadius.circular(4),
                                     color: i == _index
-                                        ? theme.colorScheme.primary
-                                        : theme.colorScheme.outlineVariant,
+                                        ? TowerColors.gold
+                                        : const Color(0x40FFFFFF),
                                   ),
                                 ),
                             ],
@@ -195,11 +215,26 @@ class _HowToPlayOverlayState extends State<HowToPlayOverlay> {
                             children: <Widget>[
                               TextButton(
                                 onPressed: widget.onClose,
+                                style: TextButton.styleFrom(
+                                  foregroundColor: TowerColors.textSoft,
+                                ),
                                 child: const Text('Skip'),
                               ),
                               const Spacer(),
                               FilledButton(
                                 onPressed: _next,
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: TowerColors.buttonBottom,
+                                  foregroundColor: const Color(0xFF3A2200),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 26,
+                                    vertical: 14,
+                                  ),
+                                  textStyle: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
                                 child: Text(_isLast ? 'Play' : 'Next'),
                               ),
                             ],

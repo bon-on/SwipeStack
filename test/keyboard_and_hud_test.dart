@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:swipe_stack/src/game/how_to_play.dart';
 import 'package:swipe_stack/src/game/swipe_stack_controller.dart';
 import 'package:swipe_stack/src/game/swipe_stack_models.dart';
+import 'package:swipe_stack/src/game/swipe_stack_painter.dart';
 import 'package:swipe_stack/src/game/swipe_stack_screen.dart';
 import 'package:swipe_stack/src/persistence/best_stack_store.dart';
 
@@ -66,6 +67,9 @@ Future<void> _pump(
   );
   await tester.pump();
 }
+
+bool _isStagePaint(Widget widget) =>
+    widget is CustomPaint && widget.painter is SwipeStackPainter;
 
 void main() {
   testWidgets('HUD shows Perfect x1 after a perfect drop', (tester) async {
@@ -148,21 +152,29 @@ void main() {
     expect(find.text('MAX'), findsOneWidget);
   });
 
-  testWidgets('play column is capped to 520 wide on desktop viewports', (
+  testWidgets('wide viewports cap the play field and add side panels', (
     tester,
   ) async {
     await _pump(tester, _controller(), size: const Size(1280, 720));
-    final header = tester.getRect(find.text('SwipeStack'));
-    final hint = tester.getRect(find.textContaining('Tap or swipe'));
-    expect(header.left, greaterThan(300));
-    expect(hint.right - header.left, lessThanOrEqualTo(520));
+    expect(find.byWidgetPredicate(_isStagePaint), findsOneWidget);
+    final field = tester.getRect(find.byWidgetPredicate(_isStagePaint));
+    expect(field.width, lessThanOrEqualTo(SwipeStackScreen.maxContentWidth));
+    expect(field.center.dx, closeTo(640, 1));
+    // Side panels: title on the left, missions on the right.
+    expect(tester.getRect(find.text('SwipeStack')).right, lessThan(field.left));
+    expect(tester.getRect(find.text('MISSIONS')).left, greaterThan(field.right));
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('phone portrait keeps the full width', (tester) async {
+  testWidgets('phone portrait stacks the HUD and keeps a wide play field', (
+    tester,
+  ) async {
     await _pump(tester, _controller());
-    final header = tester.getRect(find.text('SwipeStack'));
-    expect(header.left, 18);
+    final field = tester.getRect(find.byWidgetPredicate(_isStagePaint));
+    expect(field.width, greaterThan(350));
+    expect(tester.getRect(find.text('SwipeStack')).bottom, lessThan(field.top));
+    expect(find.text('MISSIONS'), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('held-key repeat does not restart or drop', (tester) async {
