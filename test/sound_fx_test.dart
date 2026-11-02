@@ -17,6 +17,32 @@ class _FakeWeb extends WebSound {
   void play(String assetKey, {double volume = 1}) => calls.add(assetKey);
 }
 
+class _LoopWeb extends WebSound {
+  final List<String> events = <String>[];
+  bool allow = true;
+
+  @override
+  void play(String assetKey, {double volume = 1}) => events.add('play');
+
+  @override
+  Future<bool> loop(String assetKey, {double volume = 1}) async {
+    events.add('loop');
+    return allow;
+  }
+
+  @override
+  void stopLoop() => events.add('stop');
+
+  @override
+  void pauseLoop() => events.add('pause');
+
+  @override
+  Future<bool> resumeLoop() async {
+    events.add('resume');
+    return allow;
+  }
+}
+
 class _MemoryMuteStore extends SoundMuteStore {
   bool muted = false;
   int writes = 0;
@@ -88,6 +114,77 @@ void main() {
     fx.play(Sfx.drop);
     await _settle();
     expect(calls, isEmpty);
+  });
+
+  test('web music waits for input, follows mute, visibility and ads', () async {
+    final web = _LoopWeb();
+    final fx = SoundFx(webSound: web, isWeb: true, store: _MemoryMuteStore());
+    fx.startMusic();
+    await _settle();
+    expect(web.events, isEmpty, reason: 'no audio before the first input');
+    fx.onUserInput();
+    await _settle();
+    expect(web.events, ['loop']);
+    expect(fx.isMusicPlaying, isTrue);
+
+    await fx.setUserMuted(true);
+    expect(web.events.last, 'pause');
+    expect(fx.isMusicPlaying, isFalse);
+    await fx.setUserMuted(false);
+    await _settle();
+    expect(web.events.last, 'resume');
+
+    fx.setAppVisible(false);
+    expect(web.events.last, 'pause');
+    fx.setAppVisible(true);
+    await _settle();
+    expect(web.events.last, 'resume');
+
+    // Ads stop the loop; it starts again afterwards.
+    fx.stopMusic();
+    expect(web.events.last, 'stop');
+    fx.startMusic();
+    await _settle();
+    expect(web.events.last, 'loop');
+    fx.dispose();
+    expect(web.events.last, 'stop');
+  });
+
+  test('a refused web loop retries on the next input', () async {
+    final web = _LoopWeb()..allow = false;
+    final fx = SoundFx(webSound: web, isWeb: true);
+    fx.startMusic();
+    fx.onUserInput();
+    await _settle();
+    expect(fx.isMusicPlaying, isFalse);
+    web.allow = true;
+    fx.onUserInput();
+    await _settle();
+    expect(fx.isMusicPlaying, isTrue);
+  });
+
+  test(
+    'native music uses startLoop/stopLoop and new effects use play',
+    () async {
+      final calls = _recordChannel();
+      final fx = SoundFx(isWeb: false, store: _MemoryMuteStore());
+      fx.startMusic();
+      fx.play(Sfx.perfect);
+      await _settle();
+      expect(calls, ['startLoop', 'play']);
+      await fx.setUserMuted(true);
+      await _settle();
+      expect(calls.last, 'stopLoop');
+      fx.play(Sfx.levelUp);
+      await _settle();
+      expect(calls.last, 'stopLoop');
+    },
+  );
+
+  test('music loop asset is small enough for the web build', () {
+    final file = File(SoundFx.musicAsset);
+    expect(file.existsSync(), isTrue);
+    expect(file.lengthSync(), lessThanOrEqualTo(1024 * 1024));
   });
 
   test('a missing native channel is swallowed', () async {

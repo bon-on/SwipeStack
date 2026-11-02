@@ -9,7 +9,8 @@ class AdService {
 
   Future<void> loadInterstitial() async {}
 
-  void showInterstitialIfReady() {}
+  /// Web builds are ad-free; nothing shows, so [onClosed] is never needed.
+  bool showInterstitialIfReady({void Function()? onClosed}) => false;
 
   void dispose() {}
 }

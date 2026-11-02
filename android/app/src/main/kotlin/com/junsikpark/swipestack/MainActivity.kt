@@ -11,6 +11,8 @@ class MainActivity : FlutterActivity() {
     private var dropPlayer: MediaPlayer? = null
     private var successPlayer: MediaPlayer? = null
     private var failPlayer: MediaPlayer? = null
+    private val effectPlayers = mutableSetOf<MediaPlayer>()
+    private var musicPlayer: MediaPlayer? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -30,6 +32,26 @@ class MainActivity : FlutterActivity() {
                 }
                 "playFail" -> {
                     playSound("assets/audio/fail.wav") { failPlayer = it }
+                    result.success(null)
+                }
+                "play" -> {
+                    val asset = call.argument<String>("asset")
+                    val volume = call.argument<Double>("volume") ?: 1.0
+                    if (asset != null) {
+                        playEffect(asset, volume.toFloat())
+                    }
+                    result.success(null)
+                }
+                "startLoop" -> {
+                    val asset = call.argument<String>("asset")
+                    val volume = call.argument<Double>("volume") ?: 1.0
+                    if (asset != null) {
+                        startLoop(asset, volume.toFloat())
+                    }
+                    result.success(null)
+                }
+                "stopLoop" -> {
+                    stopLoop()
                     result.success(null)
                 }
                 "disposeAudio" -> {
@@ -75,7 +97,70 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    // Releases the player and closes the descriptor if any step fails, so a
+    // broken asset never leaks a MediaPlayer or a file handle.
+    private fun openPlayer(asset: String, usage: Int): MediaPlayer {
+        val key = FlutterInjector.instance().flutterLoader().getLookupKeyForAsset(asset)
+        val player = MediaPlayer()
+        try {
+            player.setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setContentType(usage)
+                    .setUsage(AudioAttributes.USAGE_GAME)
+                    .build(),
+            )
+            assets.openFd(key).use { descriptor ->
+                player.setDataSource(
+                    descriptor.fileDescriptor,
+                    descriptor.startOffset,
+                    descriptor.length,
+                )
+            }
+            player.prepare()
+            return player
+        } catch (error: Exception) {
+            player.release()
+            throw error
+        }
+    }
+
+    // Generic one-shot effects may overlap; each player releases itself.
+    private fun playEffect(asset: String, volume: Float) {
+        runCatching {
+            val player = openPlayer(asset, AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            player.setVolume(volume, volume)
+            player.setOnCompletionListener {
+                it.release()
+                effectPlayers.remove(it)
+            }
+            effectPlayers.add(player)
+            player.start()
+        }
+    }
+
+    private fun startLoop(asset: String, volume: Float) {
+        stopLoop()
+        runCatching {
+            val player = openPlayer(asset, AudioAttributes.CONTENT_TYPE_MUSIC)
+            player.isLooping = true
+            player.setVolume(volume, volume)
+            musicPlayer = player
+            player.start()
+        }.onFailure {
+            musicPlayer = null
+        }
+    }
+
+    private fun stopLoop() {
+        runCatching { musicPlayer?.stop() }
+        musicPlayer?.release()
+        musicPlayer = null
+    }
+
     private fun disposeAudio() {
+        stopLoop()
+        effectPlayers.forEach { it.release() }
+        effectPlayers.clear()
         dropPlayer?.release()
         successPlayer?.release()
         failPlayer?.release()
