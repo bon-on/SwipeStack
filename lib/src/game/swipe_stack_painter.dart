@@ -167,8 +167,9 @@ class SwipeStackPainter extends CustomPainter {
         ),
       );
     }
-    // Best height line.
-    final best = controller.bestStack;
+    // Best height line: the record this run started with, so the player
+    // sees the tower pass it.
+    final best = controller.runStartBest;
     if (best <= 0) return;
     final y = floorY(best);
     if (y < -10 || y > size.height) return;

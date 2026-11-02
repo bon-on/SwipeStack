@@ -162,7 +162,10 @@ void main() {
     expect(field.center.dx, closeTo(640, 1));
     // Side panels: title on the left, missions on the right.
     expect(tester.getRect(find.text('SwipeStack')).right, lessThan(field.left));
-    expect(tester.getRect(find.text('MISSIONS')).left, greaterThan(field.right));
+    expect(
+      tester.getRect(find.text('MISSIONS')).left,
+      greaterThan(field.right),
+    );
     expect(tester.takeException(), isNull);
   });
 
@@ -185,6 +188,8 @@ void main() {
       isGameOver: true,
     );
     await _pump(tester, controller);
+    // Drop keys restart once the summary card has armed.
+    await tester.pump(const Duration(milliseconds: 1200));
     await tester.sendKeyDownEvent(LogicalKeyboardKey.space);
     await tester.sendKeyRepeatEvent(LogicalKeyboardKey.space);
     // The initial key down restarts; repeats must not drop the fresh box.

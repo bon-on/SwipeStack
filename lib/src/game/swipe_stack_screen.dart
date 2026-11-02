@@ -95,6 +95,9 @@ class _SwipeStackScreenState extends State<SwipeStackScreen>
   int _seenLength = 1;
   // True once the current run has been applied to the progress.
   bool _runCounted = false;
+  bool _newRunHandled = false;
+  // The summary entrance plays once per game over, not on every re-show.
+  bool _summaryIntroPlayed = false;
 
   bool get _tutorialBlocking => _tutorialLoading || _showHowTo;
   bool get _overlayBlocking => _tutorialBlocking || _showThemes;
@@ -281,13 +284,13 @@ class _SwipeStackScreenState extends State<SwipeStackScreen>
         key == LogicalKeyboardKey.numpadEnter ||
         key == LogicalKeyboardKey.arrowDown;
     if (_controller.isGameOver) {
-      if (isDropKey ||
-          key == LogicalKeyboardKey.keyR ||
-          key == LogicalKeyboardKey.escape) {
+      // Drop keys go through the summary card (which arms them after its
+      // entrance); R and Escape restart at once.
+      if (key == LogicalKeyboardKey.keyR || key == LogicalKeyboardKey.escape) {
         _restart();
         return KeyEventResult.handled;
       }
-      return KeyEventResult.ignored;
+      return isDropKey ? KeyEventResult.handled : KeyEventResult.ignored;
     }
     if (isDropKey) {
       _controller.drop();
@@ -312,9 +315,11 @@ class _SwipeStackScreenState extends State<SwipeStackScreen>
   /// Restarts the run. A run abandoned mid-way still counts for XP.
   void _restart() {
     if (!_controller.isGameOver) _finishRun();
+    _newRunHandled = false;
     _controller.restart();
-    // A restart that did not shrink the stack (0 floors) is still a new run.
-    _onNewRun();
+    // A restart that did not shrink the stack (0 floors) is still a new run;
+    // otherwise the controller listener has already reset it.
+    if (!_newRunHandled) _onNewRun();
     _refocus();
   }
 
@@ -346,6 +351,8 @@ class _SwipeStackScreenState extends State<SwipeStackScreen>
   }
 
   void _onNewRun() {
+    _newRunHandled = true;
+    _summaryIntroPlayed = false;
     _fx.reset(_controller.stackedBoxes.length);
     _missions.reset(level: _progress.level);
     _runCounted = false;
@@ -386,7 +393,9 @@ class _SwipeStackScreenState extends State<SwipeStackScreen>
   void _onGameOver() {
     _fx.onCollapse(_controller.stackedBoxes, _controller.movingBox);
     final outcome = _finishRun();
-    if (outcome != null && outcome.leveledUp) _sound.play(Sfx.levelUp);
+    if (outcome != null && outcome.leveledUp && _progressLoaded) {
+      _sound.play(Sfx.levelUp);
+    }
     _handleGameOverAds();
   }
 
@@ -418,6 +427,7 @@ class _SwipeStackScreenState extends State<SwipeStackScreen>
           levelBefore: outcome.levelBefore,
           totalXpAfter: outcome.progress.totalXp,
           unlockedThemes: outcome.newlyUnlockedThemes,
+          progressKnown: _progressLoaded,
         );
       });
     }
@@ -472,6 +482,13 @@ class _SwipeStackScreenState extends State<SwipeStackScreen>
   }
 
   // ------------------------------------------------------------------ build
+
+  /// True the first time the summary is built for this game over.
+  bool _takeSummaryIntro() {
+    final play = !_summaryIntroPlayed;
+    _summaryIntroPlayed = true;
+    return play;
+  }
 
   RunReport _fallbackReport() {
     // Shown when the screen opens on an already finished run.
@@ -528,6 +545,7 @@ class _SwipeStackScreenState extends State<SwipeStackScreen>
                 if (_controller.isGameOver && !_overlayBlocking)
                   Positioned.fill(
                     child: RunSummaryOverlay(
+                      animateIn: _takeSummaryIntro(),
                       report: _report ?? _fallbackReport(),
                       onPlayAgain: _restart,
                       onThemes: _openThemes,

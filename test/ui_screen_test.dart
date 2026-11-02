@@ -312,4 +312,65 @@ void main() {
     expect(c.isDropping, isTrue);
     await tester.pump(const Duration(seconds: 2));
   });
+
+  testWidgets('summary ignores drop keys and taps until it has faded in', (
+    tester,
+  ) async {
+    final c = _controller();
+    c.debugSetRun(
+      stack: const <BoxSegment>[_base],
+      movingBox: _base,
+      stackCount: 4,
+      isGameOver: true,
+    );
+    await _pump(tester, c);
+    await tester.sendKeyEvent(LogicalKeyboardKey.space);
+    await tester.pump();
+    expect(c.isGameOver, isTrue);
+    await tester.tap(find.text('Play again'), warnIfMissed: false);
+    await tester.pump();
+    expect(c.isGameOver, isTrue);
+    await tester.pump(const Duration(milliseconds: 1200));
+    await tester.tap(find.text('Play again'));
+    await tester.pump();
+    expect(c.isGameOver, isFalse);
+  });
+
+  testWidgets('R restarts from the summary immediately', (tester) async {
+    final c = _controller();
+    c.debugSetRun(
+      stack: const <BoxSegment>[_base],
+      movingBox: _base,
+      stackCount: 4,
+      isGameOver: true,
+    );
+    await _pump(tester, c);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyR);
+    await tester.pump();
+    expect(c.isGameOver, isFalse);
+  });
+
+  testWidgets('reopening the summary after themes does not replay or lock', (
+    tester,
+  ) async {
+    final c = _controller();
+    c.debugSetRun(
+      stack: const <BoxSegment>[_base],
+      movingBox: _base,
+      stackCount: 4,
+      isGameOver: true,
+    );
+    await _pump(tester, c);
+    await tester.pump(const Duration(milliseconds: 1500));
+    await tester.tap(find.text('Themes'));
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Tower themes'), findsNothing);
+    // Armed at once: Enter plays again without waiting.
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+    expect(c.isGameOver, isFalse);
+  });
 }

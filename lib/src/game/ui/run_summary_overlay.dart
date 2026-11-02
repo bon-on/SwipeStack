@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -19,7 +21,12 @@ class RunReport {
     required this.levelBefore,
     required this.totalXpAfter,
     required this.unlockedThemes,
+    this.progressKnown = true,
   });
+
+  /// False when the run ended before the saved progress loaded; level-up and
+  /// unlock lines are then hidden because they were computed from defaults.
+  final bool progressKnown;
 
   final int floors;
   final int best;
@@ -37,16 +44,24 @@ class RunReport {
 
 /// Game-over card: result, best, missions, XP and level progress.
 ///
-/// Owns the keyboard while open: Enter, Space, R and Escape play again.
+/// Owns the keyboard while open: R and Escape play again at once. Enter,
+/// Space and ArrowDown (the drop keys) and the buttons wait until the card
+/// has faded in, so a player still tapping or pressing drop when the tower
+/// falls does not skip the summary unseen.
 class RunSummaryOverlay extends StatefulWidget {
   const RunSummaryOverlay({
     super.key,
     required this.report,
     required this.onPlayAgain,
     required this.onThemes,
+    this.animateIn = true,
   });
 
   final RunReport report;
+
+  /// False when the card is shown again (e.g. after the theme picker), so
+  /// the entrance does not replay.
+  final bool animateIn;
   final VoidCallback onPlayAgain;
   final VoidCallback onThemes;
 
@@ -55,13 +70,24 @@ class RunSummaryOverlay extends StatefulWidget {
 }
 
 class _RunSummaryOverlayState extends State<RunSummaryOverlay> {
-  static const Duration entrance = Duration(milliseconds: 1300);
+  static const Duration _intro = Duration(milliseconds: 1300);
+
+  /// Drop keys and buttons are live once the card is mostly visible.
+  static const Duration armDelay = Duration(milliseconds: 1100);
 
   final FocusNode _focusNode = FocusNode(debugLabel: 'RunSummary');
+  late final Duration entrance = widget.animateIn ? _intro : Duration.zero;
+  late bool _armed = !widget.animateIn;
+  Timer? _armTimer;
 
   @override
   void initState() {
     super.initState();
+    if (!_armed) {
+      _armTimer = Timer(armDelay, () {
+        if (mounted) setState(() => _armed = true);
+      });
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _focusNode.requestFocus();
     });
@@ -69,6 +95,7 @@ class _RunSummaryOverlayState extends State<RunSummaryOverlay> {
 
   @override
   void dispose() {
+    _armTimer?.cancel();
     _focusNode.dispose();
     super.dispose();
   }
@@ -81,13 +108,15 @@ class _RunSummaryOverlayState extends State<RunSummaryOverlay> {
         HardwareKeyboard.instance.isAltPressed) {
       return KeyEventResult.ignored;
     }
-    if (event is KeyDownEvent &&
-        (key == LogicalKeyboardKey.enter ||
-            key == LogicalKeyboardKey.numpadEnter ||
-            key == LogicalKeyboardKey.space ||
-            key == LogicalKeyboardKey.arrowDown ||
-            key == LogicalKeyboardKey.keyR ||
-            key == LogicalKeyboardKey.escape)) {
+    if (event is! KeyDownEvent) return KeyEventResult.handled;
+    final isDropKey =
+        key == LogicalKeyboardKey.enter ||
+        key == LogicalKeyboardKey.numpadEnter ||
+        key == LogicalKeyboardKey.space ||
+        key == LogicalKeyboardKey.arrowDown;
+    if (key == LogicalKeyboardKey.keyR ||
+        key == LogicalKeyboardKey.escape ||
+        (isDropKey && _armed)) {
       widget.onPlayAgain();
     }
     return KeyEventResult.handled;
@@ -120,11 +149,14 @@ class _RunSummaryOverlayState extends State<RunSummaryOverlay> {
                 tween: Tween<double>(begin: 0, end: 1),
                 duration: entrance,
                 curve: const Interval(0.55, 1, curve: Curves.easeOutBack),
-                builder: (context, t, child) => Opacity(
-                  opacity: t.clamp(0.0, 1.0),
-                  child: Transform.translate(
-                    offset: Offset(0, 40 * (1 - t)),
-                    child: child,
+                builder: (context, t, child) => IgnorePointer(
+                  ignoring: !_armed,
+                  child: Opacity(
+                    opacity: t.clamp(0.0, 1.0),
+                    child: Transform.translate(
+                      offset: Offset(0, 40 * (1 - t)),
+                      child: child,
+                    ),
                   ),
                 ),
                 child: Padding(
@@ -231,7 +263,8 @@ class _RunSummaryOverlayState extends State<RunSummaryOverlay> {
                                 ),
                               ],
                             ),
-                            if (levelAfter > r.levelBefore) ...<Widget>[
+                            if (r.progressKnown &&
+                                levelAfter > r.levelBefore) ...<Widget>[
                               const SizedBox(height: 8),
                               Text(
                                 'Level up! Builder level $levelAfter',
@@ -243,7 +276,10 @@ class _RunSummaryOverlayState extends State<RunSummaryOverlay> {
                                 ),
                               ),
                             ],
-                            for (final theme in r.unlockedThemes) ...<Widget>[
+                            for (final theme
+                                in r.progressKnown
+                                    ? r.unlockedThemes
+                                    : const <TowerTheme>[]) ...<Widget>[
                               const SizedBox(height: 6),
                               Text(
                                 'New theme unlocked: ${theme.label}',
