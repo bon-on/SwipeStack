@@ -6,6 +6,28 @@ import 'package:flutter/foundation.dart';
 import '../persistence/best_stack_store.dart';
 import 'swipe_stack_models.dart';
 
+/// What happened on the latest successful landing, for visual effects only.
+class LandingInfo {
+  const LandingInfo({
+    required this.serial,
+    required this.floor,
+    required this.perfect,
+    required this.landed,
+    required this.chips,
+  });
+
+  /// Increases with every landing in the controller's lifetime.
+  final int serial;
+
+  /// Index of the landed box in [SwipeStackController.stackedBoxes].
+  final int floor;
+  final bool perfect;
+  final BoxSegment landed;
+
+  /// Parts of the dropped box that hung over the edge and were cut off.
+  final List<BoxSegment> chips;
+}
+
 class SwipeStackController extends ChangeNotifier {
   SwipeStackController({
     required BestStackStore bestStackStore,
@@ -66,6 +88,13 @@ class SwipeStackController extends ChangeNotifier {
   double _nudgeOffset = 0;
   int _perfectStreak = 0;
   bool _lastDropPerfect = false;
+  // Best stack must not be written before the stored value is known.
+  bool _bestLoaded = false;
+  int _runStartBest = 0;
+  int _runPerfectCount = 0;
+  int _runBestStreak = 0;
+  int _landingSerial = 0;
+  LandingInfo? _lastLanding;
   BoxSegment _movingBox = const BoxSegment(
     centerX: 0.5,
     widthFactor: baseWidth,
@@ -83,6 +112,12 @@ class SwipeStackController extends ChangeNotifier {
   bool get isDropping => _isDropping;
   int get perfectStreak => _perfectStreak;
   bool get lastDropPerfect => _lastDropPerfect;
+
+  /// Best stack when the current run started (for "New best!").
+  int get runStartBest => _runStartBest;
+  int get runPerfectCount => _runPerfectCount;
+  int get runBestStreak => _runBestStreak;
+  LandingInfo? get lastLanding => _lastLanding;
   bool get isPerfectAligned =>
       (_movingBox.centerX - _stackedBoxes.last.centerX).abs() <=
       perfectTolerance;
@@ -119,7 +154,15 @@ class SwipeStackController extends ChangeNotifier {
   }
 
   Future<void> initialize() async {
-    _bestStack = await _bestStackStore.loadBestStack();
+    final stored = await _bestStackStore.loadBestStack();
+    final reachedMeanwhile = _bestStack;
+    _bestStack = math.max(stored, reachedMeanwhile);
+    _bestLoaded = true;
+    // A run that began before the load started from the stored best.
+    _runStartBest = math.max(_runStartBest, stored);
+    if (reachedMeanwhile > stored) {
+      _bestStackStore.saveBestStack(_bestStack);
+    }
     _initialized = true;
     notifyListeners();
   }
@@ -262,6 +305,11 @@ class SwipeStackController extends ChangeNotifier {
     _nudgeOffset = 0;
     _perfectStreak = perfectStreak;
     _lastDropPerfect = false;
+    _bestLoaded = true;
+    _runStartBest = bestStack;
+    _runPerfectCount = 0;
+    _runBestStreak = perfectStreak;
+    _lastLanding = null;
   }
 
   void _resolveDrop() {
@@ -283,9 +331,12 @@ class SwipeStackController extends ChangeNotifier {
     }
 
     final BoxSegment landedBox;
+    final dropped = _movingBox;
     if (isPerfect) {
       _perfectStreak += 1;
       _lastDropPerfect = true;
+      _runPerfectCount += 1;
+      _runBestStreak = math.max(_runBestStreak, _perfectStreak);
       final grownWidth = _perfectStreak >= perfectStreakForGrowth
           ? math.min(baseWidth, target.widthFactor + perfectGrowth)
           : target.widthFactor;
@@ -308,8 +359,31 @@ class SwipeStackController extends ChangeNotifier {
     _stackCount += 1;
     if (_stackCount > _bestStack) {
       _bestStack = _stackCount;
-      _bestStackStore.saveBestStack(_bestStack);
+      if (_bestLoaded) _bestStackStore.saveBestStack(_bestStack);
     }
+    _landingSerial += 1;
+    _lastLanding = LandingInfo(
+      serial: _landingSerial,
+      floor: _stackedBoxes.length - 1,
+      perfect: isPerfect,
+      landed: landedBox,
+      chips: isPerfect
+          ? const <BoxSegment>[]
+          : <BoxSegment>[
+              if (dropped.left < overlapLeft - 1e-6)
+                BoxSegment(
+                  centerX: (dropped.left + overlapLeft) / 2,
+                  widthFactor: overlapLeft - dropped.left,
+                  color: dropped.color,
+                ),
+              if (dropped.right > overlapRight + 1e-6)
+                BoxSegment(
+                  centerX: (overlapRight + dropped.right) / 2,
+                  widthFactor: dropped.right - overlapRight,
+                  color: dropped.color,
+                ),
+            ],
+    );
 
     _movingBox = _nextMovingBox(
       widthFactor: landedBox.widthFactor,
@@ -376,6 +450,10 @@ class SwipeStackController extends ChangeNotifier {
     _stackCount = 0;
     _perfectStreak = 0;
     _lastDropPerfect = false;
+    _runStartBest = _bestStack;
+    _runPerfectCount = 0;
+    _runBestStreak = 0;
+    _lastLanding = null;
     _isGameOver = false;
     _isDropping = false;
     _dropProgressUnits = 0;
