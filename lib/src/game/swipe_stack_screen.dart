@@ -54,7 +54,7 @@ class SwipeStackScreen extends StatefulWidget {
   static const double maxContentWidth = 520;
 
   /// Landscape viewports at least this wide get side panels.
-  static const double wideMinWidth = 700;
+  static const double wideMinWidth = 600;
 
   /// Whether a viewport of [size] uses the side-panel layout.
   static bool isWide(Size size) =>
