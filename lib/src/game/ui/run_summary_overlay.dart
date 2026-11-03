@@ -132,8 +132,9 @@ class _RunSummaryOverlayState extends State<RunSummaryOverlay> {
       onKeyEvent: _onKey,
       child: Stack(
         children: <Widget>[
-          // The scrim and card wait for the collapse to play out; the
-          // keyboard and buttons work from the first frame.
+          // The scrim and card wait for the collapse to play out. R and
+          // Escape work from the first frame; buttons and drop keys arm
+          // after [armDelay].
           TweenAnimationBuilder<double>(
             tween: Tween<double>(begin: 0, end: 1),
             duration: entrance,

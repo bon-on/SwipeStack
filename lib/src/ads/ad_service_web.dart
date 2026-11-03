@@ -5,6 +5,8 @@ class AdService {
 
   bool get canRequestAds => false;
 
+  bool get isInterstitialReady => false;
+
   Future<void> initialize() async {}
 
   Future<void> loadInterstitial() async {}

@@ -4,6 +4,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:swipe_stack/src/ads/interstitial_gate.dart';
 import 'package:swipe_stack/src/game/how_to_play.dart';
 import 'package:swipe_stack/src/game/swipe_stack_controller.dart';
 import 'package:swipe_stack/src/game/swipe_stack_models.dart';
@@ -43,6 +45,45 @@ class _GatedProgressStore extends MemoryTowerProgressStore {
   }
 }
 
+class _FakeAds extends InterstitialGate {
+  bool ready = false;
+  int shows = 0;
+  int preloads = 0;
+  void Function()? onClosed;
+
+  @override
+  bool get isReady => ready;
+
+  @override
+  bool show({void Function()? onClosed}) {
+    shows += 1;
+    this.onClosed = onClosed;
+    return true;
+  }
+
+  @override
+  void preload() => preloads += 1;
+}
+
+const _audio = MethodChannel('swipe_stack/audio');
+
+List<String> _recordAudio() {
+  final calls = <String>[];
+  TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+      .setMockMethodCallHandler(_audio, (call) async {
+        calls.add(call.method);
+        return null;
+      });
+  addTearDown(
+    () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(_audio, null),
+  );
+  return calls;
+}
+
+List<String> _loopCalls(List<String> calls) =>
+    calls.where((c) => c == 'startLoop' || c == 'stopLoop').toList();
+
 const _base = BoxSegment(
   centerX: 0.5,
   widthFactor: 0.74,
@@ -68,6 +109,7 @@ Future<void> _pump(
   Size size = const Size(390, 844),
   TowerProgressStore? store,
   MissionBoard? missions,
+  InterstitialGate? ads,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -80,6 +122,8 @@ Future<void> _pump(
         howToPlayStore: const _SeenStore(),
         progressStore: store ?? MemoryTowerProgressStore(),
         missions: missions,
+        enableAds: ads != null,
+        interstitials: ads ?? const AdServiceInterstitials(),
       ),
     ),
   );
@@ -181,7 +225,8 @@ void main() {
     expect(find.text('+15 XP'), findsOneWidget);
     expect(find.text('+20 XP'), findsOneWidget);
 
-    // Force a miss.
+    // Force a miss, keeping this run's stats (1 floor, 1 perfect, started
+    // with best 0).
     c.debugSetRun(
       stack: c.stackedBoxes,
       movingBox: const BoxSegment(
@@ -191,16 +236,19 @@ void main() {
       ),
       stackCount: 1,
       bestStack: 1,
+      runStartBest: 0,
+      runPerfectCount: 1,
+      perfectStreak: 1,
     );
-    // debugSetRun resets the run start best; the run began with best 0.
     await _land(tester, c);
     expect(c.isGameOver, isTrue);
     await tester.pump(const Duration(seconds: 2));
     expect(find.text('Tower slipped'), findsOneWidget);
-    // 1 floor x2 + 0 perfects counted after the reset + 35 mission XP.
-    expect(store.value.totalXp, greaterThanOrEqualTo(35));
+    expect(find.text('New best!'), findsOneWidget);
+    // 1 floor x2 + 1 perfect x3 + 35 mission XP; no participation bonus.
+    expect(store.value.totalXp, 40);
     expect(store.value.runs, 1);
-    expect(find.textContaining('XP'), findsWidgets);
+    expect(find.text('+40 XP'), findsOneWidget);
 
     // Enter plays again and the summary goes away.
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
@@ -373,5 +421,109 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pump();
     expect(c.isGameOver, isFalse);
+  });
+
+  group('music around ads and app visibility', () {
+    Future<void> gameOver(WidgetTester tester, SwipeStackController c) async {
+      c.debugSetRun(
+        stack: const <BoxSegment>[_base],
+        movingBox: const BoxSegment(
+          centerX: 0.97,
+          widthFactor: 0.06,
+          color: Color(0xFF000000),
+        ),
+      );
+      await _land(tester, c);
+      expect(c.isGameOver, isTrue);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyR);
+      await tester.pump();
+    }
+
+    testWidgets('music stops for a ready ad and restarts only after close', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final calls = _recordAudio();
+      final ads = _FakeAds()..ready = true;
+      final c = _controller();
+      c.debugSetRun(stack: const <BoxSegment>[_base], movingBox: _base);
+      await _pump(tester, c, ads: ads);
+      expect(_loopCalls(calls), <String>['startLoop']);
+      await gameOver(tester, c);
+      await gameOver(tester, c);
+      expect(ads.shows, 0);
+      expect(_loopCalls(calls), <String>['startLoop']);
+      await gameOver(tester, c);
+      expect(ads.shows, 1);
+      expect(_loopCalls(calls), <String>['startLoop', 'stopLoop']);
+      await tester.pump(const Duration(seconds: 1));
+      expect(_loopCalls(calls).last, 'stopLoop');
+      ads.onClosed!();
+      await tester.pump();
+      expect(_loopCalls(calls), <String>['startLoop', 'stopLoop', 'startLoop']);
+    });
+
+    testWidgets('no ad ready: the music keeps playing', (tester) async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final calls = _recordAudio();
+      final ads = _FakeAds();
+      final c = _controller();
+      c.debugSetRun(stack: const <BoxSegment>[_base], movingBox: _base);
+      await _pump(tester, c, ads: ads);
+      for (var i = 0; i < 3; i++) {
+        await gameOver(tester, c);
+      }
+      expect(ads.shows, 0);
+      expect(ads.preloads, 3);
+      expect(_loopCalls(calls), <String>['startLoop']);
+    });
+
+    testWidgets('hidden or paused app holds the music back', (tester) async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final calls = _recordAudio();
+      final c = _controller();
+      c.debugSetRun(stack: const <BoxSegment>[_base], movingBox: _base);
+      await _pump(tester, c);
+      expect(_loopCalls(calls), <String>['startLoop']);
+      Future<void> to(AppLifecycleState state) async {
+        tester.binding.handleAppLifecycleStateChanged(state);
+        await tester.pump();
+      }
+
+      await to(AppLifecycleState.resumed);
+      await to(AppLifecycleState.inactive);
+      expect(_loopCalls(calls), <String>['startLoop']);
+      await to(AppLifecycleState.hidden);
+      expect(_loopCalls(calls), <String>['startLoop', 'stopLoop']);
+      await to(AppLifecycleState.paused);
+      await to(AppLifecycleState.hidden);
+      expect(_loopCalls(calls), <String>['startLoop', 'stopLoop']);
+      await to(AppLifecycleState.inactive);
+      await to(AppLifecycleState.resumed);
+      expect(_loopCalls(calls), <String>['startLoop', 'stopLoop', 'startLoop']);
+    });
+
+    test('lifecycle mapping', () {
+      expect(
+        SwipeStackScreen.isVisibleState(AppLifecycleState.resumed),
+        isTrue,
+      );
+      expect(
+        SwipeStackScreen.isVisibleState(AppLifecycleState.inactive),
+        isTrue,
+      );
+      expect(
+        SwipeStackScreen.isVisibleState(AppLifecycleState.hidden),
+        isFalse,
+      );
+      expect(
+        SwipeStackScreen.isVisibleState(AppLifecycleState.paused),
+        isFalse,
+      );
+      expect(
+        SwipeStackScreen.isVisibleState(AppLifecycleState.detached),
+        isFalse,
+      );
+    });
   });
 }

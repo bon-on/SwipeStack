@@ -289,6 +289,8 @@ class SwipeStackController extends ChangeNotifier {
     bool isDropping = false,
     double movingDirection = 1,
     int perfectStreak = 0,
+    int? runStartBest,
+    int runPerfectCount = 0,
   }) {
     _stackedBoxes
       ..clear()
@@ -306,8 +308,8 @@ class SwipeStackController extends ChangeNotifier {
     _perfectStreak = perfectStreak;
     _lastDropPerfect = false;
     _bestLoaded = true;
-    _runStartBest = bestStack;
-    _runPerfectCount = 0;
+    _runStartBest = runStartBest ?? bestStack;
+    _runPerfectCount = runPerfectCount;
     _runBestStreak = perfectStreak;
     _lastLanding = null;
   }

@@ -16,6 +16,9 @@ class AdService {
 
   bool get canRequestAds => _initialized;
 
+  /// True when an interstitial is loaded and can be shown now.
+  bool get isInterstitialReady => _initialized && _interstitialAd != null;
+
   Future<void> initialize() async {
     if (_initialized) {
       return;

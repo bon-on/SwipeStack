@@ -99,13 +99,13 @@ class MainActivity : FlutterActivity() {
 
     // Releases the player and closes the descriptor if any step fails, so a
     // broken asset never leaks a MediaPlayer or a file handle.
-    private fun openPlayer(asset: String, usage: Int): MediaPlayer {
+    private fun openPlayer(asset: String, contentType: Int): MediaPlayer {
         val key = FlutterInjector.instance().flutterLoader().getLookupKeyForAsset(asset)
         val player = MediaPlayer()
         try {
             player.setAudioAttributes(
                 AudioAttributes.Builder()
-                    .setContentType(usage)
+                    .setContentType(contentType)
                     .setUsage(AudioAttributes.USAGE_GAME)
                     .build(),
             )

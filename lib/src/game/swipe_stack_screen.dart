@@ -6,7 +6,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
 import '../ads/ad_banner.dart';
-import '../ads/ad_service.dart';
+import '../ads/interstitial_gate.dart';
 import '../audio/sound_fx.dart';
 import '../audio/sound_mute_store.dart';
 import '../meta/missions.dart';
@@ -31,7 +31,11 @@ class SwipeStackScreen extends StatefulWidget {
     this.soundMuteStore = const SoundMuteStore(),
     this.progressStore = const TowerProgressStore(),
     this.missions,
+    this.interstitials = const AdServiceInterstitials(),
   });
+
+  /// Interstitial ads shown every third game over when [enableAds] is on.
+  final InterstitialGate interstitials;
 
   final bool enableAds;
 
@@ -55,6 +59,11 @@ class SwipeStackScreen extends StatefulWidget {
 
   /// Landscape viewports at least this wide get side panels.
   static const double wideMinWidth = 600;
+
+  /// Music plays while the app is resumed or only briefly inactive (e.g. a
+  /// system dialog); hidden, paused and detached hold it back.
+  static bool isVisibleState(AppLifecycleState state) =>
+      state == AppLifecycleState.resumed || state == AppLifecycleState.inactive;
 
   /// Whether a viewport of [size] uses the side-panel layout.
   static bool isWide(Size size) =>
@@ -125,10 +134,8 @@ class _SwipeStackScreenState extends State<SwipeStackScreen>
     _controller.addListener(_onControllerChanged);
     _ticker = createTicker(_handleTick);
     _lifecycle = AppLifecycleListener(
-      onStateChange: (state) => _sound.setAppVisible(
-        state == AppLifecycleState.resumed ||
-            state == AppLifecycleState.inactive,
-      ),
+      onStateChange: (state) =>
+          _sound.setAppVisible(SwipeStackScreen.isVisibleState(state)),
     );
     HardwareKeyboard.instance.addHandler(_onHardwareKey);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -371,10 +378,10 @@ class _SwipeStackScreenState extends State<SwipeStackScreen>
     }
     final done = _missions.update(_missionStats());
     if (done.isNotEmpty) {
-      final mission = done.first;
+      final xp = done.fold<int>(0, (sum, m) => sum + m.xp);
       _fx.showBanner(
-        'Mission complete',
-        '${mission.label}  +${mission.xp} XP',
+        done.length == 1 ? 'Mission complete' : '${done.length} missions done',
+        done.length == 1 ? '${done.single.label}  +$xp XP' : '+$xp XP',
         TowerColors.mint,
       );
       _sound.play(Sfx.mission);
@@ -437,16 +444,16 @@ class _SwipeStackScreenState extends State<SwipeStackScreen>
   void _handleGameOverAds() {
     if (!widget.enableAds) return;
     _completedRuns += 1;
-    if (_completedRuns % 3 == 0) {
-      // The music must not play over a full-screen ad.
-      _sound.stopMusic();
-      final shown = AdService.instance.showInterstitialIfReady(
-        onClosed: _resumeMusicAfterAd,
-      );
-      if (!shown) _resumeMusicAfterAd();
-    } else {
-      unawaited(AdService.instance.loadInterstitial());
+    final ads = widget.interstitials;
+    if (_completedRuns % 3 != 0 || !ads.isReady) {
+      // Nothing will cover the game: leave the music running.
+      ads.preload();
+      return;
     }
+    // The music must not play over a full-screen ad.
+    _sound.stopMusic();
+    final shown = ads.show(onClosed: _resumeMusicAfterAd);
+    if (!shown) _resumeMusicAfterAd();
   }
 
   void _resumeMusicAfterAd() {
