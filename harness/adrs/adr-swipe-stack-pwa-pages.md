@@ -3,6 +3,7 @@ id: adr-swipe-stack-pwa-pages
 title: Use Flutter Web and GitHub Pages for SwipeStack PWA deployment
 status: accepted
 related_specs:
+  - feature-fair-start-and-starter-missions
   - feature-swipe-stack-pwa-pages
   - feature-sound-effects
   - feature-retention-polish

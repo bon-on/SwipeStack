@@ -3,6 +3,7 @@ id: contract-swipe-stack-mvp
 title: SwipeStack MVP gameplay and feedback contract
 status: draft
 related_specs:
+  - feature-fair-start-and-starter-missions
   - feature-swipe-stack-mvp
   - feature-sound-effects
   - feature-retention-polish

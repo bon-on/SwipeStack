@@ -3,6 +3,7 @@ id: contract-swipe-stack-pwa-pages
 title: SwipeStack PWA GitHub Pages deployment contract
 status: active
 related_specs:
+  - feature-fair-start-and-starter-missions
   - feature-swipe-stack-pwa-pages
   - feature-sound-effects
   - feature-retention-polish

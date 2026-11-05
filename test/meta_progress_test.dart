@@ -161,9 +161,108 @@ void main() {
   });
 
   group('MissionBoard', () {
+    test('builder levels 1 and 2 get the same achievable starter goals', () {
+      for (final level in <int>[1, 2]) {
+        for (var seed = 0; seed < 10; seed++) {
+          final board = MissionBoard(random: math.Random(seed), level: level);
+          expect(board.missions.map((m) => m.kind), <MissionKind>[
+            MissionKind.buildFloors,
+            MissionKind.perfectDrops,
+            MissionKind.wideFloors,
+          ]);
+          expect(board.missions.map((m) => m.target), <int>[3, 1, 3]);
+          expect(board.missions.map((m) => m.xp), <int>[15, 20, 20]);
+          expect(board.missions[1].label, 'Land 1 perfect drop');
+        }
+      }
+    });
+
+    test('starter achievements pay once and reset enters the regular pool', () {
+      final board = MissionBoard(random: math.Random(7), level: 2);
+      final first = board.update(
+        const MissionStats(
+          floors: 1,
+          perfects: 1,
+          bestStreak: 1,
+          topWidth: 0.74,
+        ),
+      );
+      expect(first.single.kind, MissionKind.perfectDrops);
+      expect(board.earnedXp, 20);
+      final third = board.update(
+        const MissionStats(
+          floors: 3,
+          perfects: 1,
+          bestStreak: 1,
+          topWidth: MissionBoard.halfWidth,
+        ),
+      );
+      expect(third.map((m) => m.kind), <MissionKind>[
+        MissionKind.buildFloors,
+        MissionKind.wideFloors,
+      ]);
+      expect(board.earnedXp, 55);
+      expect(board.completedCount, 3);
+      expect(
+        board.update(
+          const MissionStats(
+            floors: 8,
+            perfects: 3,
+            bestStreak: 2,
+            topWidth: 0.1,
+          ),
+        ),
+        isEmpty,
+      );
+      expect(board.earnedXp, 55);
+
+      board.reset(level: 3);
+      expect(board.completedCount, 0);
+      expect(board.earnedXp, 0);
+      // Beginner generation consumes no RNG; the first regular roll is
+      // identical to a fresh level-3 board with the same source.
+      final regular = MissionBoard(random: math.Random(7), level: 3);
+      expect(
+        board.missions.map((m) => m.label),
+        regular.missions.map((m) => m.label),
+      );
+      for (final m in board.missions) {
+        switch (m.kind) {
+          case MissionKind.buildFloors:
+            expect(m.target, inInclusiveRange(8, 10));
+          case MissionKind.perfectDrops:
+          case MissionKind.perfectStreak:
+            expect(m.target, 2);
+          case MissionKind.wideFloors:
+            expect(m.target, 6);
+        }
+      }
+    });
+
+    test('explicit injected missions override beginner defaults', () {
+      const custom = Mission(
+        kind: MissionKind.perfectStreak,
+        target: 7,
+        xp: 42,
+      );
+      final board = MissionBoard(level: 1, missions: const [custom]);
+      expect(board.missions.single, same(custom));
+      expect(
+        board.update(
+          const MissionStats(
+            floors: 3,
+            perfects: 1,
+            bestStreak: 1,
+            topWidth: 0.74,
+          ),
+        ),
+        isEmpty,
+      );
+    });
+
     test('rolls three distinct kinds with level-scaled targets', () {
       for (var seed = 0; seed < 20; seed++) {
-        final board = MissionBoard(random: math.Random(seed));
+        final board = MissionBoard(random: math.Random(seed), level: 3);
         final kinds = board.missions.map((m) => m.kind).toSet();
         expect(kinds, hasLength(3));
         for (final m in board.missions) {
@@ -175,7 +274,7 @@ void main() {
       final low = MissionBoard(
         random: math.Random(1),
         missions: null,
-        level: 1,
+        level: 3,
       ).missions;
       final high = MissionBoard(random: math.Random(1), level: 12).missions;
       expect(high.first.target, greaterThanOrEqualTo(low.first.target));

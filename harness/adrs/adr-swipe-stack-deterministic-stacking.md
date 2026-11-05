@@ -3,6 +3,7 @@ id: adr-swipe-stack-deterministic-stacking
 title: Use deterministic overlap stacking in a shared Flutter runtime
 status: accepted
 related_specs:
+  - feature-fair-start-and-starter-missions
   - feature-swipe-stack-mvp
   - feature-sound-effects
   - feature-retention-polish

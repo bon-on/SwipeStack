@@ -45,7 +45,9 @@ class Mission {
       case MissionKind.buildFloors:
         return 'Build $target floors';
       case MissionKind.perfectDrops:
-        return 'Land $target perfect drops';
+        return target == 1
+            ? 'Land 1 perfect drop'
+            : 'Land $target perfect drops';
       case MissionKind.perfectStreak:
         return 'Perfect x$target in a row';
       case MissionKind.wideFloors:
@@ -116,6 +118,15 @@ class MissionBoard {
   }
 
   List<Mission> _roll() {
+    // Give new builders a short, predictable first success before adding
+    // streak goals and the regular randomized progression.
+    if (_level <= 2) {
+      return const <Mission>[
+        Mission(kind: MissionKind.buildFloors, target: 3, xp: 15),
+        Mission(kind: MissionKind.perfectDrops, target: 1, xp: 20),
+        Mission(kind: MissionKind.wideFloors, target: 3, xp: 20),
+      ];
+    }
     final tier = min(3, (_level - 1) ~/ 3);
     final kinds = List<MissionKind>.of(MissionKind.values)..shuffle(_random);
     final picked = kinds.take(3).toList()

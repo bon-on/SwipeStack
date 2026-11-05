@@ -88,6 +88,10 @@ class _SwipeStackScreenState extends State<SwipeStackScreen>
   final FocusNode _focusNode = FocusNode(debugLabel: 'SwipeStackPlay');
   Duration? _previousTick;
   bool _tickerStarted = false;
+  bool _appActive = true;
+  bool _pointerAllowed = false;
+  bool _tapAllowed = false;
+  bool _dragAllowed = false;
   bool _wasGameOver = false;
   int _completedRuns = 0;
   // The simulation and all input are paused while the first-run check is
@@ -110,6 +114,8 @@ class _SwipeStackScreenState extends State<SwipeStackScreen>
 
   bool get _tutorialBlocking => _tutorialLoading || _showHowTo;
   bool get _overlayBlocking => _tutorialBlocking || _showThemes;
+  bool get _sessionReady => _tickerStarted && _appActive && !_overlayBlocking;
+  bool get _playInputAllowed => _sessionReady && !_controller.isGameOver;
 
   @override
   void initState() {
@@ -133,10 +139,10 @@ class _SwipeStackScreenState extends State<SwipeStackScreen>
     _fx.reset(_seenLength);
     _controller.addListener(_onControllerChanged);
     _ticker = createTicker(_handleTick);
-    _lifecycle = AppLifecycleListener(
-      onStateChange: (state) =>
-          _sound.setAppVisible(SwipeStackScreen.isVisibleState(state)),
-    );
+    final lifecycleState = WidgetsBinding.instance.lifecycleState;
+    _appActive =
+        lifecycleState == null || lifecycleState == AppLifecycleState.resumed;
+    _lifecycle = AppLifecycleListener(onStateChange: _onLifecycleChanged);
     HardwareKeyboard.instance.addHandler(_onHardwareKey);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(_bootstrap());
@@ -166,6 +172,7 @@ class _SwipeStackScreenState extends State<SwipeStackScreen>
       seen = await widget.howToPlayStore.loadSeen();
     } catch (_) {}
     if (!mounted) return;
+    _resetInputClock();
     setState(() {
       _tutorialLoading = false;
       _showHowTo = !seen;
@@ -224,15 +231,34 @@ class _SwipeStackScreenState extends State<SwipeStackScreen>
 
   // ------------------------------------------------------------------ input
 
+  /// A gesture or elapsed frame from before a pause must not act on resume.
+  void _resetInputClock() {
+    _previousTick = null;
+    _pointerAllowed = false;
+    _tapAllowed = false;
+    _dragAllowed = false;
+  }
+
+  void _onLifecycleChanged(AppLifecycleState state) {
+    _appActive = state == AppLifecycleState.resumed;
+    _resetInputClock();
+    // Brief inactivity still allows audio, but never advances a timing game.
+    _sound.setAppVisible(SwipeStackScreen.isVisibleState(state));
+  }
+
   void _toggleSound() {
     unawaited(_sound.setUserMuted(!_sound.userMuted).catchError((Object _) {}));
     setState(() {});
     if (!_overlayBlocking) _refocus();
   }
 
-  void _openHowToPlay() => setState(() => _showHowTo = true);
+  void _openHowToPlay() {
+    _resetInputClock();
+    setState(() => _showHowTo = true);
+  }
 
   void _closeHowToPlay() {
+    _resetInputClock();
     setState(() => _showHowTo = false);
     _refocus();
     unawaited(_markTutorialSeen());
@@ -244,9 +270,13 @@ class _SwipeStackScreenState extends State<SwipeStackScreen>
     } catch (_) {}
   }
 
-  void _openThemes() => setState(() => _showThemes = true);
+  void _openThemes() {
+    _resetInputClock();
+    setState(() => _showThemes = true);
+  }
 
   void _closeThemes() {
+    _resetInputClock();
     setState(() => _showThemes = false);
     _refocus();
   }
@@ -272,8 +302,6 @@ class _SwipeStackScreenState extends State<SwipeStackScreen>
   }
 
   KeyEventResult _onKeyEvent(FocusNode node, KeyEvent event) {
-    // Overlays own the keyboard while they are open.
-    if (_overlayBlocking) return KeyEventResult.handled;
     // Ignore key repeat so a held key cannot drop several boxes in a row.
     if (event is KeyUpEvent || event is KeyRepeatEvent) {
       return KeyEventResult.ignored;
@@ -284,6 +312,9 @@ class _SwipeStackScreenState extends State<SwipeStackScreen>
         HardwareKeyboard.instance.isAltPressed) {
       return KeyEventResult.ignored;
     }
+    // Pointer and keyboard input share the same initialization/pause gate.
+    // Overlay descendants still handle their own keys before they bubble here.
+    if (!_sessionReady) return KeyEventResult.handled;
     final key = event.logicalKey;
     final isDropKey =
         key == LogicalKeyboardKey.space ||
@@ -321,6 +352,8 @@ class _SwipeStackScreenState extends State<SwipeStackScreen>
 
   /// Restarts the run. A run abandoned mid-way still counts for XP.
   void _restart() {
+    if (!_sessionReady) return;
+    _resetInputClock();
     if (!_controller.isGameOver) _finishRun();
     _newRunHandled = false;
     _controller.restart();
@@ -468,11 +501,14 @@ class _SwipeStackScreenState extends State<SwipeStackScreen>
     final deltaSeconds =
         (elapsed - previousTick).inMicroseconds /
         Duration.microsecondsPerSecond;
+    if (!_appActive || !_tickerStarted || deltaSeconds <= 0) return;
     // Effects keep running behind overlays; the game itself pauses. The
     // tick time is still recorded so closing a card causes no time jump.
     _fx.tick(deltaSeconds, _controller.stackedBoxes.length);
     if (_overlayBlocking) return;
-    _controller.update(deltaSeconds);
+    // Do not let a suspended tab or a rendering hitch decide a drop that the
+    // player never saw. Discard excess time instead of catching up later.
+    _controller.update(math.min(deltaSeconds, 1 / 30));
   }
 
   Future<void> _bootstrap() async {
@@ -485,6 +521,7 @@ class _SwipeStackScreenState extends State<SwipeStackScreen>
     }
 
     _tickerStarted = true;
+    _resetInputClock();
     _ticker.start();
   }
 
@@ -589,14 +626,31 @@ class _SwipeStackScreenState extends State<SwipeStackScreen>
         c.setPlayfieldSize(Size(constraints.maxWidth, constraints.maxHeight));
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onTap: c.isGameOver ? null : c.drop,
-          onHorizontalDragUpdate: c.isGameOver
-              ? null
-              : (details) => c.nudgeMovingBox(details.primaryDelta ?? 0),
-          onHorizontalDragEnd: c.isGameOver
-              ? null
-              : (details) =>
-                    c.dropWithSwipeVelocity(details.primaryVelocity ?? 0),
+          onHorizontalDragDown: (_) => _pointerAllowed = _playInputAllowed,
+          onTapDown: (_) => _tapAllowed = _pointerAllowed && _playInputAllowed,
+          onTapCancel: () => _tapAllowed = false,
+          onTap: () {
+            final allowed = _tapAllowed && _playInputAllowed;
+            _tapAllowed = false;
+            _pointerAllowed = false;
+            if (allowed) c.drop();
+          },
+          onHorizontalDragStart: (_) =>
+              _dragAllowed = _pointerAllowed && _playInputAllowed,
+          onHorizontalDragUpdate: (details) {
+            if (_dragAllowed && _playInputAllowed) {
+              c.nudgeMovingBox(details.primaryDelta ?? 0);
+            }
+          },
+          onHorizontalDragEnd: (details) {
+            final allowed = _dragAllowed && _playInputAllowed;
+            _dragAllowed = false;
+            _pointerAllowed = false;
+            if (allowed) {
+              c.dropWithSwipeVelocity(details.primaryVelocity ?? 0);
+            }
+          },
+          onHorizontalDragCancel: () => _dragAllowed = false,
           child: DecoratedBox(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(24),
